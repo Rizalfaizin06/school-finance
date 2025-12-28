@@ -2,57 +2,85 @@
 
 namespace App\Filament\Resources\ExpenseCategories;
 
-use App\Filament\Resources\ExpenseCategories\Pages\CreateExpenseCategory;
-use App\Filament\Resources\ExpenseCategories\Pages\EditExpenseCategory;
-use App\Filament\Resources\ExpenseCategories\Pages\ListExpenseCategories;
-use App\Filament\Resources\ExpenseCategories\Schemas\ExpenseCategoryForm;
-use App\Filament\Resources\ExpenseCategories\Tables\ExpenseCategoriesTable;
+use App\Filament\Resources\ExpenseCategories\Pages\ManageExpenseCategories;
 use App\Models\ExpenseCategory;
 use BackedEnum;
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteAction;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
+use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\Toggle;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
+use Filament\Tables\Columns\IconColumn;
+use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 
 class ExpenseCategoryResource extends Resource
 {
     protected static ?string $model = ExpenseCategory::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedTag;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
 
-    protected static ?string $recordTitleAttribute = 'name';
-
-    protected static ?string $navigationGroup = 'Master Data';
-
-    protected static ?string $modelLabel = 'Kategori Pengeluaran';
-
-    protected static ?string $pluralModelLabel = 'Kategori Pengeluaran';
-
-    protected static ?int $navigationSort = 5;
+    protected static ?string $recordTitleAttribute = 'ExpenseCategory';
 
     public static function form(Schema $schema): Schema
     {
-        return ExpenseCategoryForm::configure($schema);
+        return $schema
+            ->components([
+                TextInput::make('name')
+                    ->required(),
+                TextInput::make('code')
+                    ->required(),
+                Textarea::make('description')
+                    ->default(null)
+                    ->columnSpanFull(),
+                Toggle::make('is_active')
+                    ->required(),
+            ]);
     }
 
     public static function table(Table $table): Table
     {
-        return ExpenseCategoriesTable::configure($table);
-    }
-
-    public static function getRelations(): array
-    {
-        return [
-            //
-        ];
+        return $table
+            ->recordTitleAttribute('ExpenseCategory')
+            ->columns([
+                TextColumn::make('name')
+                    ->searchable(),
+                TextColumn::make('code')
+                    ->searchable(),
+                IconColumn::make('is_active')
+                    ->boolean(),
+                TextColumn::make('created_at')
+                    ->dateTime()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('updated_at')
+                    ->dateTime()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+            ])
+            ->filters([
+                //
+            ])
+            ->recordActions([
+                EditAction::make(),
+                DeleteAction::make(),
+            ])
+            ->toolbarActions([
+                BulkActionGroup::make([
+                    DeleteBulkAction::make(),
+                ]),
+            ]);
     }
 
     public static function getPages(): array
     {
         return [
-            'index' => ListExpenseCategories::route('/'),
-            'create' => CreateExpenseCategory::route('/create'),
-            'edit' => EditExpenseCategory::route('/{record}/edit'),
+            'index' => ManageExpenseCategories::route('/'),
         ];
     }
 }

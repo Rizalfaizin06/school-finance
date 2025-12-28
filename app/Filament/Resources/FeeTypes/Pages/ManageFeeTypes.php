@@ -4,9 +4,9 @@ namespace App\Filament\Resources\FeeTypes\Pages;
 
 use App\Filament\Resources\FeeTypes\FeeTypeResource;
 use Filament\Actions\CreateAction;
-use Filament\Resources\Pages\ListRecords;
+use Filament\Resources\Pages\ManageRecords;
 
-class ListFeeTypes extends ListRecords
+class ManageFeeTypes extends ManageRecords
 {
     protected static string $resource = FeeTypeResource::class;
 

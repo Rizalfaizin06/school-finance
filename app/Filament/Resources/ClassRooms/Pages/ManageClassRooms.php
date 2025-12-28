@@ -4,9 +4,9 @@ namespace App\Filament\Resources\ClassRooms\Pages;
 
 use App\Filament\Resources\ClassRooms\ClassRoomResource;
 use Filament\Actions\CreateAction;
-use Filament\Resources\Pages\ListRecords;
+use Filament\Resources\Pages\ManageRecords;
 
-class ListClassRooms extends ListRecords
+class ManageClassRooms extends ManageRecords
 {
     protected static string $resource = ClassRoomResource::class;
 

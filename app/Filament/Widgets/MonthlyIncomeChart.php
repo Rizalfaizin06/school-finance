@@ -5,61 +5,52 @@ namespace App\Filament\Widgets;
 use App\Models\Payment;
 use App\Models\Expense;
 use Filament\Widgets\ChartWidget;
-use Illuminate\Support\Carbon;
+use Carbon\Carbon;
 
 class MonthlyIncomeChart extends ChartWidget
 {
-    protected static ?string $heading = 'Grafik Pemasukan & Pengeluaran (6 Bulan Terakhir)';
+    protected ?string $heading = 'Pemasukan & Pengeluaran (6 Bulan Terakhir)';
 
-    protected static ?int $sort = 3;
-
-    protected int|string|array $columnSpan = 'full';
+    protected static ?int $sort = 2;
 
     protected function getData(): array
     {
-        $months = collect(range(5, 0))->map(function ($monthsBack) {
-            return now()->subMonths($monthsBack);
-        });
+        $months = collect();
+        $incomeData = [];
+        $expenseData = [];
 
-        $incomeData = $months->map(function ($date) {
-            return Payment::whereYear('payment_date', '=', $date->year)
-                ->whereMonth('payment_date', '=', $date->month)
+        for ($i = 5; $i >= 0; $i--) {
+            $date = Carbon::now()->subMonths($i);
+            $months->push($date->format('M Y'));
+
+            $incomeData[] = Payment::whereMonth('payment_date', $date->month)
+                ->whereYear('payment_date', $date->year)
                 ->sum('amount');
-        })->toArray();
 
-        $expenseData = $months->map(function ($date) {
-            return Expense::whereYear('expense_date', '=', $date->year)
-                ->whereMonth('expense_date', '=', $date->month)
+            $expenseData[] = Expense::whereMonth('expense_date', $date->month)
+                ->whereYear('expense_date', $date->year)
                 ->sum('amount');
-        })->toArray();
-
-        $labels = $months->map(function ($date) {
-            return $date->format('M Y');
-        })->toArray();
+        }
 
         return [
             'datasets' => [
                 [
                     'label' => 'Pemasukan',
                     'data' => $incomeData,
-                    'backgroundColor' => 'rgba(34, 197, 94, 0.2)',
-                    'borderColor' => 'rgb(34, 197, 94)',
-                    'fill' => true,
+                    'backgroundColor' => '#10b981',
                 ],
                 [
                     'label' => 'Pengeluaran',
                     'data' => $expenseData,
-                    'backgroundColor' => 'rgba(239, 68, 68, 0.2)',
-                    'borderColor' => 'rgb(239, 68, 68)',
-                    'fill' => true,
+                    'backgroundColor' => '#ef4444',
                 ],
             ],
-            'labels' => $labels,
+            'labels' => $months->toArray(),
         ];
     }
 
     protected function getType(): string
     {
-        return 'line';
+        return 'bar';
     }
 }

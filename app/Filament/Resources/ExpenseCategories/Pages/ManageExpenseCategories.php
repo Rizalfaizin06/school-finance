@@ -3,17 +3,17 @@
 namespace App\Filament\Resources\ExpenseCategories\Pages;
 
 use App\Filament\Resources\ExpenseCategories\ExpenseCategoryResource;
-use Filament\Actions\DeleteAction;
-use Filament\Resources\Pages\EditRecord;
+use Filament\Actions\CreateAction;
+use Filament\Resources\Pages\ManageRecords;
 
-class EditExpenseCategory extends EditRecord
+class ManageExpenseCategories extends ManageRecords
 {
     protected static string $resource = ExpenseCategoryResource::class;
 
     protected function getHeaderActions(): array
     {
         return [
-            DeleteAction::make(),
+            CreateAction::make(),
         ];
     }
 }

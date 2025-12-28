@@ -4,9 +4,9 @@ namespace App\Filament\Resources\Payments\Pages;
 
 use App\Filament\Resources\Payments\PaymentResource;
 use Filament\Actions\CreateAction;
-use Filament\Resources\Pages\ListRecords;
+use Filament\Resources\Pages\ManageRecords;
 
-class ListPayments extends ListRecords
+class ManagePayments extends ManageRecords
 {
     protected static string $resource = PaymentResource::class;
 

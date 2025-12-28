@@ -2,65 +2,124 @@
 
 namespace App\Filament\Resources\Expenses;
 
-use App\Filament\Resources\Expenses\Pages\CreateExpense;
-use App\Filament\Resources\Expenses\Pages\EditExpense;
-use App\Filament\Resources\Expenses\Pages\ListExpenses;
-use App\Filament\Resources\Expenses\Pages\ViewExpense;
-use App\Filament\Resources\Expenses\Schemas\ExpenseForm;
-use App\Filament\Resources\Expenses\Schemas\ExpenseInfolist;
-use App\Filament\Resources\Expenses\Tables\ExpensesTable;
+use App\Filament\Resources\Expenses\Pages\ManageExpenses;
 use App\Models\Expense;
 use BackedEnum;
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteAction;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
+use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Textarea;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
+use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 
 class ExpenseResource extends Resource
 {
     protected static ?string $model = Expense::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedArrowTrendingDown;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
 
-    protected static ?string $recordTitleAttribute = 'expense_number';
-
-    protected static ?string $navigationGroup = 'Transaksi';
-
-    protected static ?string $modelLabel = 'Pengeluaran';
-
-    protected static ?string $pluralModelLabel = 'Data Pengeluaran';
-
-    protected static ?int $navigationSort = 2;
+    protected static ?string $recordTitleAttribute = 'Expense';
 
     public static function form(Schema $schema): Schema
     {
-        return ExpenseForm::configure($schema);
-    }
-
-    public static function infolist(Schema $schema): Schema
-    {
-        return ExpenseInfolist::configure($schema);
+        return $schema
+            ->components([
+                TextInput::make('expense_number')
+                    ->required(),
+                TextInput::make('expense_category_id')
+                    ->required()
+                    ->numeric(),
+                Select::make('account_id')
+                    ->relationship('account', 'name')
+                    ->required(),
+                Select::make('academic_year_id')
+                    ->relationship('academicYear', 'name')
+                    ->required(),
+                DatePicker::make('expense_date')
+                    ->required(),
+                TextInput::make('amount')
+                    ->required()
+                    ->numeric(),
+                TextInput::make('vendor')
+                    ->default(null),
+                Textarea::make('description')
+                    ->required()
+                    ->columnSpanFull(),
+                TextInput::make('receipt_file')
+                    ->default(null),
+                TextInput::make('approved_by')
+                    ->numeric()
+                    ->default(null),
+                TextInput::make('created_by')
+                    ->numeric()
+                    ->default(null),
+            ]);
     }
 
     public static function table(Table $table): Table
     {
-        return ExpensesTable::configure($table);
-    }
-
-    public static function getRelations(): array
-    {
-        return [
-            //
-        ];
+        return $table
+            ->recordTitleAttribute('Expense')
+            ->columns([
+                TextColumn::make('expense_number')
+                    ->searchable(),
+                TextColumn::make('expense_category_id')
+                    ->numeric()
+                    ->sortable(),
+                TextColumn::make('account.name')
+                    ->searchable(),
+                TextColumn::make('academicYear.name')
+                    ->searchable(),
+                TextColumn::make('expense_date')
+                    ->date()
+                    ->sortable(),
+                TextColumn::make('amount')
+                    ->numeric()
+                    ->sortable(),
+                TextColumn::make('vendor')
+                    ->searchable(),
+                TextColumn::make('receipt_file')
+                    ->searchable(),
+                TextColumn::make('approved_by')
+                    ->numeric()
+                    ->sortable(),
+                TextColumn::make('created_by')
+                    ->numeric()
+                    ->sortable(),
+                TextColumn::make('created_at')
+                    ->dateTime()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('updated_at')
+                    ->dateTime()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+            ])
+            ->filters([
+                //
+            ])
+            ->recordActions([
+                EditAction::make(),
+                DeleteAction::make(),
+            ])
+            ->toolbarActions([
+                BulkActionGroup::make([
+                    DeleteBulkAction::make(),
+                ]),
+            ]);
     }
 
     public static function getPages(): array
     {
         return [
-            'index' => ListExpenses::route('/'),
-            'create' => CreateExpense::route('/create'),
-            'view' => ViewExpense::route('/{record}'),
-            'edit' => EditExpense::route('/{record}/edit'),
+            'index' => ManageExpenses::route('/'),
         ];
     }
 }
