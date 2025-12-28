@@ -39,14 +39,20 @@ class DummyDataSeeder extends Seeder
         $classes = ClassRoom::all();
         if ($classes->isEmpty()) {
             $classData = [
-                ['name' => '1A', 'grade' => 1], ['name' => '1B', 'grade' => 1],
-                ['name' => '2A', 'grade' => 2], ['name' => '2B', 'grade' => 2],
-                ['name' => '3A', 'grade' => 3], ['name' => '3B', 'grade' => 3],
-                ['name' => '4A', 'grade' => 4], ['name' => '4B', 'grade' => 4],
-                ['name' => '5A', 'grade' => 5], ['name' => '5B', 'grade' => 5],
-                ['name' => '6A', 'grade' => 6], ['name' => '6B', 'grade' => 6],
+                ['name' => '1A', 'grade' => 1],
+                ['name' => '1B', 'grade' => 1],
+                ['name' => '2A', 'grade' => 2],
+                ['name' => '2B', 'grade' => 2],
+                ['name' => '3A', 'grade' => 3],
+                ['name' => '3B', 'grade' => 3],
+                ['name' => '4A', 'grade' => 4],
+                ['name' => '4B', 'grade' => 4],
+                ['name' => '5A', 'grade' => 5],
+                ['name' => '5B', 'grade' => 5],
+                ['name' => '6A', 'grade' => 6],
+                ['name' => '6B', 'grade' => 6],
             ];
-            
+
             foreach ($classData as $data) {
                 ClassRoom::create([
                     'name' => $data['name'],
@@ -69,10 +75,26 @@ class DummyDataSeeder extends Seeder
         if ($students->isEmpty()) {
             $this->command->info('Creating students...');
             $studentNames = [
-                'Ahmad Hidayat', 'Siti Nurhaliza', 'Budi Santoso', 'Aisyah Putri', 'Dedi Kurniawan',
-                'Fitri Handayani', 'Gunawan Pratama', 'Hana Maharani', 'Irfan Hakim', 'Juwita Sari',
-                'Kevin Anggara', 'Lina Wati', 'Muhammad Rizki', 'Nadia Safitri', 'Oscar Wijaya',
-                'Putri Ayu', 'Qori Ramadhan', 'Rini Susanti', 'Surya Pratama', 'Tina Marlina',
+                'Ahmad Hidayat',
+                'Siti Nurhaliza',
+                'Budi Santoso',
+                'Aisyah Putri',
+                'Dedi Kurniawan',
+                'Fitri Handayani',
+                'Gunawan Pratama',
+                'Hana Maharani',
+                'Irfan Hakim',
+                'Juwita Sari',
+                'Kevin Anggara',
+                'Lina Wati',
+                'Muhammad Rizki',
+                'Nadia Safitri',
+                'Oscar Wijaya',
+                'Putri Ayu',
+                'Qori Ramadhan',
+                'Rini Susanti',
+                'Surya Pratama',
+                'Tina Marlina',
             ];
 
             $studentCount = 0;
@@ -81,7 +103,7 @@ class DummyDataSeeder extends Seeder
                     $randomName = $studentNames[array_rand($studentNames)];
                     $nisNumber = str_pad($studentCount + 1, 6, '0', STR_PAD_LEFT);
                     $nisnNumber = '00' . $nisNumber;
-                    
+
                     Student::create([
                         'nis' => $nisNumber,
                         'nisn' => $nisnNumber,
@@ -109,15 +131,15 @@ class DummyDataSeeder extends Seeder
         $this->command->info('Creating payment transactions...');
         $paymentCount = Payment::count(); // Start from existing count
         $sppFeeType = $feeTypes->where('name', 'SPP')->first();
-        
+
         if ($sppFeeType && $account) {
             // For each of last 6 months
             for ($monthsAgo = 5; $monthsAgo >= 0; $monthsAgo--) {
                 $paymentDate = Carbon::now()->subMonths($monthsAgo);
-                
+
                 // 70-90% students pay SPP each month
                 $payingStudents = $students->random(min(rand(70, 90), $students->count()));
-                
+
                 foreach ($payingStudents as $student) {
                     Payment::create([
                         'receipt_number' => 'KWT/' . $paymentDate->format('Ymd') . '/' . str_pad($paymentCount + 1, 4, '0', STR_PAD_LEFT),
@@ -135,7 +157,7 @@ class DummyDataSeeder extends Seeder
                     $paymentCount++;
                 }
             }
-            
+
             // Add some other fee type payments
             $otherFees = $feeTypes->whereNotIn('name', ['SPP'])->take(3);
             foreach ($otherFees as $feeType) {
@@ -180,12 +202,12 @@ class DummyDataSeeder extends Seeder
 
             for ($monthsAgo = 5; $monthsAgo >= 0; $monthsAgo--) {
                 $expenseDate = Carbon::now()->subMonths($monthsAgo);
-                
+
                 // 5-8 expenses per month
                 for ($i = 0; $i < rand(5, 8); $i++) {
                     $expense = $expenseTypes[array_rand($expenseTypes)];
                     $category = $expenseCategories->random();
-                    
+
                     Expense::create([
                         'expense_number' => 'EXP/' . $expenseDate->format('Ymd') . '/' . str_pad($expenseCount + 1, 4, '0', STR_PAD_LEFT),
                         'expense_category_id' => $category->id,
@@ -212,7 +234,7 @@ class DummyDataSeeder extends Seeder
             $account->update([
                 'balance' => $account->opening_balance + $totalIncome - $totalExpense
             ]);
-            
+
             $this->command->info('Updated account balance: Rp ' . number_format($account->balance, 0, ',', '.'));
         }
 
