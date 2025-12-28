@@ -5,6 +5,7 @@ namespace App\Filament\Resources\AcademicYears;
 use App\Filament\Resources\AcademicYears\Pages\ManageAcademicYears;
 use App\Models\AcademicYear;
 use BackedEnum;
+use UnitEnum;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
@@ -24,7 +25,17 @@ class AcademicYearResource extends Resource
 {
     protected static ?string $model = AcademicYear::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedCalendar;
+
+    protected static UnitEnum|string|null $navigationGroup = 'Master Data';
+
+    protected static ?string $navigationLabel = 'Tahun Ajaran';
+
+    protected static ?string $modelLabel = 'Tahun Ajaran';
+
+    protected static ?string $pluralModelLabel = 'Tahun Ajaran';
+
+    protected static ?int $navigationSort = 1;
 
     protected static ?string $recordTitleAttribute = 'AcademicYear';
 

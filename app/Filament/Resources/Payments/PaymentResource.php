@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Payments;
 use App\Filament\Resources\Payments\Pages\ManagePayments;
 use App\Models\Payment;
 use BackedEnum;
+use UnitEnum;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
@@ -23,7 +24,17 @@ class PaymentResource extends Resource
 {
     protected static ?string $model = Payment::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedCurrencyDollar;
+
+    protected static UnitEnum|string|null $navigationGroup = 'Transaksi';
+
+    protected static ?string $navigationLabel = 'Pembayaran';
+
+    protected static ?string $modelLabel = 'Pembayaran';
+
+    protected static ?string $pluralModelLabel = 'Pembayaran';
+
+    protected static ?int $navigationSort = 1;
 
     protected static ?string $recordTitleAttribute = 'Payment';
 

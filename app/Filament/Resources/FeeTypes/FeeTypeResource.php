@@ -5,6 +5,7 @@ namespace App\Filament\Resources\FeeTypes;
 use App\Filament\Resources\FeeTypes\Pages\ManageFeeTypes;
 use App\Models\FeeType;
 use BackedEnum;
+use UnitEnum;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
@@ -24,7 +25,17 @@ class FeeTypeResource extends Resource
 {
     protected static ?string $model = FeeType::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedTag;
+
+    protected static UnitEnum|string|null $navigationGroup = 'Master Data';
+
+    protected static ?string $navigationLabel = 'Jenis Pembayaran';
+
+    protected static ?string $modelLabel = 'Jenis Pembayaran';
+
+    protected static ?string $pluralModelLabel = 'Jenis Pembayaran';
+
+    protected static ?int $navigationSort = 4;
 
     protected static ?string $recordTitleAttribute = 'FeeType';
 

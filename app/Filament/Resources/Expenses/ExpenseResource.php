@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Expenses;
 use App\Filament\Resources\Expenses\Pages\ManageExpenses;
 use App\Models\Expense;
 use BackedEnum;
+use UnitEnum;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
@@ -23,7 +24,17 @@ class ExpenseResource extends Resource
 {
     protected static ?string $model = Expense::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedArrowTrendingDown;
+
+    protected static UnitEnum|string|null $navigationGroup = 'Transaksi';
+
+    protected static ?string $navigationLabel = 'Pengeluaran';
+
+    protected static ?string $modelLabel = 'Pengeluaran';
+
+    protected static ?string $pluralModelLabel = 'Pengeluaran';
+
+    protected static ?int $navigationSort = 2;
 
     protected static ?string $recordTitleAttribute = 'Expense';
 

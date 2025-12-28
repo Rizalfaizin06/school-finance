@@ -5,6 +5,7 @@ namespace App\Filament\Resources\ClassRooms;
 use App\Filament\Resources\ClassRooms\Pages\ManageClassRooms;
 use App\Models\ClassRoom;
 use BackedEnum;
+use UnitEnum;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
@@ -21,7 +22,17 @@ class ClassRoomResource extends Resource
 {
     protected static ?string $model = ClassRoom::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedBuildingOffice2;
+
+    protected static UnitEnum|string|null $navigationGroup = 'Master Data';
+
+    protected static ?string $navigationLabel = 'Kelas';
+
+    protected static ?string $modelLabel = 'Kelas';
+
+    protected static ?string $pluralModelLabel = 'Kelas';
+
+    protected static ?int $navigationSort = 2;
 
     protected static ?string $recordTitleAttribute = 'ClassRoom';
 

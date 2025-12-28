@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Accounts;
 use App\Filament\Resources\Accounts\Pages\ManageAccounts;
 use App\Models\Account;
 use BackedEnum;
+use UnitEnum;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
@@ -24,7 +25,17 @@ class AccountResource extends Resource
 {
     protected static ?string $model = Account::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedBanknotes;
+
+    protected static UnitEnum|string|null $navigationGroup = 'Master Data';
+
+    protected static ?string $navigationLabel = 'Akun Kas';
+
+    protected static ?string $modelLabel = 'Akun Kas';
+
+    protected static ?string $pluralModelLabel = 'Akun Kas';
+
+    protected static ?int $navigationSort = 6;
 
     protected static ?string $recordTitleAttribute = 'Account';
 

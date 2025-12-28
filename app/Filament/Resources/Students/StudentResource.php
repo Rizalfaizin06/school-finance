@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Students;
 use App\Filament\Resources\Students\Pages\ManageStudents;
 use App\Models\Student;
 use BackedEnum;
+use UnitEnum;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
@@ -23,7 +24,17 @@ class StudentResource extends Resource
 {
     protected static ?string $model = Student::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedUserGroup;
+
+    protected static UnitEnum|string|null $navigationGroup = 'Master Data';
+
+    protected static ?string $navigationLabel = 'Siswa';
+
+    protected static ?string $modelLabel = 'Siswa';
+
+    protected static ?string $pluralModelLabel = 'Siswa';
+
+    protected static ?int $navigationSort = 3;
 
     protected static ?string $recordTitleAttribute = 'Student';
 
@@ -53,11 +64,11 @@ class StudentResource extends Resource
                     ->required(),
                 Select::make('status')
                     ->options([
-            'active' => 'Active',
-            'inactive' => 'Inactive',
-            'graduated' => 'Graduated',
-            'transferred' => 'Transferred',
-        ])
+                        'active' => 'Active',
+                        'inactive' => 'Inactive',
+                        'graduated' => 'Graduated',
+                        'transferred' => 'Transferred',
+                    ])
                     ->default('active')
                     ->required(),
                 TextInput::make('parent_name')
