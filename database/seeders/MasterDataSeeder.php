@@ -90,7 +90,8 @@ class MasterDataSeeder extends Seeder
         Account::create([
             'name' => 'Kas Tunai',
             'type' => 'cash',
-            'balance' => 0,
+            'opening_balance' => 10000000,
+            'balance' => 10000000,
             'description' => 'Kas tunai sekolah',
             'is_active' => true,
         ]);
@@ -99,7 +100,8 @@ class MasterDataSeeder extends Seeder
             'name' => 'Bank BRI',
             'type' => 'bank',
             'account_number' => '0123-4567-8901',
-            'balance' => 0,
+            'opening_balance' => 50000000,
+            'balance' => 50000000,
             'description' => 'Rekening sekolah di Bank BRI',
             'is_active' => true,
         ]);
@@ -108,8 +110,29 @@ class MasterDataSeeder extends Seeder
             'name' => 'Bank Mandiri',
             'type' => 'bank',
             'account_number' => '1234-5678-9012',
-            'balance' => 0,
+            'opening_balance' => 30000000,
+            'balance' => 30000000,
             'description' => 'Rekening sekolah di Bank Mandiri',
+            'is_active' => true,
+        ]);
+
+        Account::create([
+            'name' => 'Bank BNI',
+            'type' => 'bank',
+            'account_number' => '9876-5432-1098',
+            'opening_balance' => 20000000,
+            'balance' => 20000000,
+            'description' => 'Rekening sekolah di Bank BNI',
+            'is_active' => true,
+        ]);
+
+        Account::create([
+            'name' => 'Dana BOS',
+            'type' => 'bank',
+            'account_number' => '5555-6666-7777',
+            'opening_balance' => 100000000,
+            'balance' => 100000000,
+            'description' => 'Rekening khusus Dana BOS dari pemerintah',
             'is_active' => true,
         ]);
 

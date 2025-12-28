@@ -15,6 +15,7 @@ return new class extends Migration {
             $table->string('name'); // Kas Tunai, Bank BRI, dll
             $table->enum('type', ['cash', 'bank']); // Tunai atau Bank
             $table->string('account_number')->nullable(); // Nomor rekening (untuk bank)
+            $table->decimal('opening_balance', 15, 2)->default(0); // Saldo awal
             $table->decimal('balance', 15, 2)->default(0); // Saldo saat ini
             $table->text('description')->nullable();
             $table->boolean('is_active')->default(true);
