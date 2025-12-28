@@ -6,6 +6,7 @@ use App\Models\Account;
 use App\Models\Payment;
 use App\Models\Expense;
 use App\Models\Student;
+use App\Filament\Pages\TunggakanSPP;
 use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Carbon\Carbon;
@@ -57,7 +58,8 @@ class FinanceStatsOverview extends StatsOverviewWidget
             Stat::make('Tunggakan SPP', $outstandingCount . ' Siswa')
                 ->description('Belum bayar bulan ini')
                 ->descriptionIcon('heroicon-m-exclamation-triangle')
-                ->color('warning'),
+                ->color('warning')
+                ->url(TunggakanSPP::getUrl()),
         ];
     }
 }
