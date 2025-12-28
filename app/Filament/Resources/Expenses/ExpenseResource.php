@@ -44,9 +44,9 @@ class ExpenseResource extends Resource
             ->components([
                 TextInput::make('expense_number')
                     ->required(),
-                TextInput::make('expense_category_id')
-                    ->required()
-                    ->numeric(),
+                Select::make('expense_category_id')
+                    ->relationship('category', 'name')
+                    ->required(),
                 Select::make('account_id')
                     ->relationship('account', 'name')
                     ->required(),
@@ -81,22 +81,29 @@ class ExpenseResource extends Resource
             ->columns([
                 TextColumn::make('expense_number')
                     ->searchable(),
-                TextColumn::make('expense_category_id')
-                    ->numeric()
+                TextColumn::make('category.name')
+                    ->label('Kategori')
+                    ->searchable()
                     ->sortable(),
                 TextColumn::make('account.name')
+                    ->label('Akun')
                     ->searchable(),
                 TextColumn::make('academicYear.name')
+                    ->label('Tahun Ajaran')
                     ->searchable(),
                 TextColumn::make('expense_date')
+                    ->label('Tanggal')
                     ->date()
                     ->sortable(),
                 TextColumn::make('amount')
-                    ->numeric()
+                    ->label('Jumlah')
+                    ->money('IDR')
                     ->sortable(),
                 TextColumn::make('vendor')
                     ->searchable(),
-                TextColumn::make('receipt_file')
+                TextColumn::make('description')
+                    ->label('Deskripsi')
+                    ->limit(50)
                     ->searchable(),
                 TextColumn::make('approved_by')
                     ->numeric()
