@@ -141,7 +141,7 @@ class RolePermissionSeeder extends Seeder
 
         // Create default admin user
         $admin = User::firstOrCreate(
-            ['email' => 'admin@school.com'],
+            ['email' => 'admin.edu@rizalscompanylab.my.id'],
             [
                 'name' => 'Administrator',
                 'password' => Hash::make('password'),
@@ -151,7 +151,7 @@ class RolePermissionSeeder extends Seeder
 
         // Create bendahara user
         $bendahara = User::firstOrCreate(
-            ['email' => 'bendahara@school.com'],
+            ['email' => 'bendahara.edu@rizalscompanylab.my.id'],
             [
                 'name' => 'Bendahara Sekolah',
                 'password' => Hash::make('password'),
@@ -161,7 +161,7 @@ class RolePermissionSeeder extends Seeder
 
         // Create kepala sekolah user
         $kepsek = User::firstOrCreate(
-            ['email' => 'kepsek@school.com'],
+            ['email' => 'kepsek.edu@rizalscompanylab.my.id'],
             [
                 'name' => 'Kepala Sekolah',
                 'password' => Hash::make('password'),
@@ -171,8 +171,8 @@ class RolePermissionSeeder extends Seeder
 
         $this->command->info('Roles and permissions created successfully!');
         $this->command->info('Default users:');
-        $this->command->info('Admin: admin@school.com / password');
-        $this->command->info('Bendahara: bendahara@school.com / password');
-        $this->command->info('Kepala Sekolah: kepsek@school.com / password');
+        $this->command->info('Admin: admin.edu@rizalscompanylab.my.id / password');
+        $this->command->info('Bendahara: bendahara.edu@rizalscompanylab.my.id / password');
+        $this->command->info('Kepala Sekolah: kepsek.edu@rizalscompanylab.my.id / password');
     }
 }
