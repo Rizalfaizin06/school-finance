@@ -45,7 +45,8 @@ class PembayaranSPP extends Page implements HasForms
     public ?array $data = [];
     public $studentId = null;
     public $studentInfo = null;
-    public $unpaidMonths = [];
+    public $unpaidMonths = [];  // Tunggakan (enrollment - now)
+    public $availableMonths = []; // Semua bulan yang bisa dibayar (enrollment - 6 tahun)
     public $paymentHistory = [];
 
     public function mount(): void
@@ -119,11 +120,11 @@ class PembayaranSPP extends Page implements HasForms
                                     ->label('Jumlah Bulan Dibayar')
                                     ->numeric()
                                     ->minValue(1)
-                                    ->maxValue(fn() => count($this->unpaidMonths))
+                                    ->maxValue(fn() => count($this->availableMonths))
                                     ->default(1)
                                     ->required()
                                     ->suffix('bulan')
-                                    ->helperText(fn() => 'Maksimal: ' . count($this->unpaidMonths) . ' bulan'),
+                                    ->helperText(fn() => $this->getPaymentHelperText()),
 
                                 TextInput::make('amount_per_month')
                                     ->label('Nominal per Bulan')
@@ -150,7 +151,7 @@ class PembayaranSPP extends Page implements HasForms
                                     ->columnSpanFull(),
                             ]),
                     ])
-                    ->visible(fn() => $this->studentId !== null && count($this->unpaidMonths) > 0),
+                    ->visible(fn() => $this->studentId !== null && count($this->availableMonths) > 0),
             ])
             ->statePath('data');
     }
@@ -160,6 +161,7 @@ class PembayaranSPP extends Page implements HasForms
         if (!$this->studentId) {
             $this->studentInfo = null;
             $this->unpaidMonths = [];
+            $this->availableMonths = [];
             return;
         }
 
@@ -170,13 +172,25 @@ class PembayaranSPP extends Page implements HasForms
 
         $enrollmentDate = Carbon::parse($student->enrollment_date);
         $now = Carbon::now();
+        $endDate = $enrollmentDate->copy()->addYears(6); // SD = 6 tahun
 
-        // Calculate all months from enrollment to now
-        $allMonths = [];
+        // Calculate months from enrollment to NOW (untuk tunggakan)
+        $monthsUntilNow = [];
         $current = $enrollmentDate->copy();
-
         while ($current->lte($now)) {
-            $allMonths[] = [
+            $monthsUntilNow[] = [
+                'year' => $current->year,
+                'month' => $current->month,
+                'month_name' => $current->format('F Y'),
+            ];
+            $current->addMonth();
+        }
+
+        // Calculate ALL months from enrollment to 6 years (untuk available payment)
+        $allMonthsUntil6Years = [];
+        $current = $enrollmentDate->copy();
+        while ($current->lte($endDate)) {
+            $allMonthsUntil6Years[] = [
                 'year' => $current->year,
                 'month' => $current->month,
                 'month_name' => $current->format('F Y'),
@@ -195,12 +209,15 @@ class PembayaranSPP extends Page implements HasForms
             return $payment->year . '-' . str_pad($payment->month, 2, '0', STR_PAD_LEFT);
         })->toArray();
 
-        // Build payment history with all months
-        $this->paymentHistory = collect($allMonths)->map(function ($month) use ($payments) {
+        // Build payment history with all months (sampai 6 tahun)
+        $this->paymentHistory = collect($allMonthsUntil6Years)->map(function ($month) use ($payments, $now) {
             $key = $month['year'] . '-' . str_pad($month['month'], 2, '0', STR_PAD_LEFT);
             $payment = $payments->first(function ($p) use ($month) {
                 return $p->year == $month['year'] && $p->month == $month['month'];
             });
+
+            $monthDate = Carbon::create($month['year'], $month['month'], 1);
+            $isFuture = $monthDate->isAfter($now);
 
             $monthNameIndo = [
                 1 => 'Januari',
@@ -219,27 +236,45 @@ class PembayaranSPP extends Page implements HasForms
 
             return [
                 'month_year' => $monthNameIndo[$month['month']] . ' ' . $month['year'],
-                'status' => $payment ? 'Sudah Bayar' : 'Belum Bayar',
+                'status' => $payment ? 'Sudah Bayar' : ($isFuture ? 'Opsional' : 'Tunggakan'),
                 'receipt_number' => $payment ? $payment->receipt_number : '-',
                 'amount' => $payment ? $payment->amount : null,
                 'payment_date' => $payment ? Carbon::parse($payment->payment_date)->format('d/m/Y') : null,
                 'is_paid' => $payment !== null,
+                'is_future' => $isFuture,
             ];
         })->toArray();
 
-        // Filter unpaid months
-        $this->unpaidMonths = collect($allMonths)->filter(function ($month) use ($paidMonths) {
+        // Filter TUNGGAKAN (unpaid months until NOW only)
+        $this->unpaidMonths = collect($monthsUntilNow)->filter(function ($month) use ($paidMonths) {
+            $key = $month['year'] . '-' . str_pad($month['month'], 2, '0', STR_PAD_LEFT);
+            return !in_array($key, $paidMonths);
+        })->values()->toArray();
+
+        // Filter AVAILABLE months (unpaid until 6 years - untuk form payment)
+        $this->availableMonths = collect($allMonthsUntil6Years)->filter(function ($month) use ($paidMonths) {
             $key = $month['year'] . '-' . str_pad($month['month'], 2, '0', STR_PAD_LEFT);
             return !in_array($key, $paidMonths);
         })->values()->toArray();
 
         $this->studentInfo = [
             'student' => $student,
-            'total_months_should_pay' => count($allMonths),
-            'total_paid' => count($allMonths) - count($this->unpaidMonths),
-            'total_unpaid' => count($this->unpaidMonths),
+            'total_months_should_pay' => count($monthsUntilNow), // Sampai sekarang
+            'total_paid' => $payments->count(), // Langsung dari database (include advance payment)
+            'total_unpaid' => count($this->unpaidMonths), // Tunggakan
+            'total_optional' => count($this->availableMonths) - count($this->unpaidMonths), // Opsional (future)
+            'total_can_pay' => count($this->availableMonths), // Total bisa bayar (sampai 6 tahun)
             'unpaid_months' => $this->unpaidMonths,
+            'end_date' => $endDate->format('d M Y'),
         ];
+    }
+
+    protected function getPaymentHelperText(): string
+    {
+        $tunggakan = count($this->unpaidMonths);
+        $opsional = count($this->availableMonths) - $tunggakan;
+
+        return "Tunggakan: {$tunggakan} bulan, Opsional: {$opsional} bulan. Max: " . count($this->availableMonths) . " bulan";
     }
 
     protected function getStudentInfoHtml(): HtmlString
@@ -258,10 +293,15 @@ class PembayaranSPP extends Page implements HasForms
         $html .= '<div><strong style="font-size: 0.75rem; color: #6b7280;">Tanggal Masuk:</strong> <span style="font-weight: 500;">' . Carbon::parse($student->enrollment_date)->format('d M Y') . '</span></div>';
         $html .= '</div>';
 
-        $html .= '<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 0.5rem;">';
-        $html .= '<div style="padding: 0.75rem; background-color: #eff6ff; border-radius: 0.5rem; border: 1px solid #bfdbfe;"><strong style="font-size: 0.75rem; color: #1e40af;">Harus Bayar:</strong> <span style="font-weight: 700; display: block; margin-top: 0.25rem; font-size: 1.125rem; color: #1e3a8a;">' . $info['total_months_should_pay'] . ' bulan</span></div>';
+        $html .= '<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-top: 0.5rem;">';
+        $html .= '<div style="padding: 0.75rem; background-color: #eff6ff; border-radius: 0.5rem; border: 1px solid #bfdbfe;"><strong style="font-size: 0.75rem; color: #1e40af;">Harus Bayar (s/d sekarang):</strong> <span style="font-weight: 700; display: block; margin-top: 0.25rem; font-size: 1.125rem; color: #1e3a8a;">' . $info['total_months_should_pay'] . ' bulan</span></div>';
         $html .= '<div style="padding: 0.75rem; background-color: #f0fdf4; border-radius: 0.5rem; border: 1px solid #bbf7d0;"><strong style="font-size: 0.75rem; color: #15803d;">Sudah Bayar:</strong> <span style="font-weight: 700; display: block; margin-top: 0.25rem; font-size: 1.125rem; color: #166534;">' . $info['total_paid'] . ' bulan</span></div>';
         $html .= '<div style="padding: 0.75rem; background-color: #fef2f2; border-radius: 0.5rem; border: 1px solid #fecaca;"><strong style="font-size: 0.75rem; color: #b91c1c;">Tunggakan:</strong> <span style="font-weight: 700; display: block; margin-top: 0.25rem; font-size: 1.125rem; color: #dc2626;">' . $info['total_unpaid'] . ' bulan</span></div>';
+        $html .= '<div style="padding: 0.75rem; background-color: #f3e8ff; border-radius: 0.5rem; border: 1px solid #d8b4fe;"><strong style="font-size: 0.75rem; color: #6b21a8;">Opsional (s/d lulus):</strong> <span style="font-weight: 700; display: block; margin-top: 0.25rem; font-size: 1.125rem; color: #7c3aed;">' . $info['total_optional'] . ' bulan</span></div>';
+        $html .= '</div>';
+
+        $html .= '<div style="margin-top: 0.5rem; padding: 0.75rem; background-color: #e0f2fe; border-radius: 0.5rem; border: 1px solid #bae6fd;">';
+        $html .= '<strong style="font-size: 0.75rem; color: #075985;">Masa SD (6 Tahun):</strong> <span style="font-weight: 500; font-size: 0.875rem; color: #0c4a6e;">s/d ' . $info['end_date'] . ' • Total dapat dibayar: ' . $info['total_can_pay'] . ' bulan (72 bulan)</span>';
         $html .= '</div>';
 
         if (count($this->unpaidMonths) > 0) {
@@ -303,13 +343,16 @@ class PembayaranSPP extends Page implements HasForms
         $html .= '<tbody>';
 
         foreach ($this->paymentHistory as $index => $payment) {
-            $rowBg = $payment['is_paid']
-                ? 'background-color: #f0fdf4;'
-                : 'background-color: #fef2f2;';
-
-            $statusBadge = $payment['is_paid']
-                ? '<span style="display: inline-flex; align-items: center; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; background-color: #dcfce7; color: #166534;">✓ Sudah Bayar</span>'
-                : '<span style="display: inline-flex; align-items: center; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; background-color: #fee2e2; color: #991b1b;">✗ Belum Bayar</span>';
+            if ($payment['is_paid']) {
+                $rowBg = 'background-color: #f0fdf4;';
+                $statusBadge = '<span style="display: inline-flex; align-items: center; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; background-color: #dcfce7; color: #166534;">✓ Sudah Bayar</span>';
+            } elseif ($payment['is_future']) {
+                $rowBg = 'background-color: #faf5ff;';
+                $statusBadge = '<span style="display: inline-flex; align-items: center; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; background-color: #e9d5ff; color: #6b21a8;">◆ Opsional</span>';
+            } else {
+                $rowBg = 'background-color: #fef2f2;';
+                $statusBadge = '<span style="display: inline-flex; align-items: center; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; background-color: #fee2e2; color: #991b1b;">✗ Tunggakan</span>';
+            }
 
             $borderBottom = ($index < count($this->paymentHistory) - 1) ? 'border-bottom: 1px solid #e5e7eb;' : '';
 
@@ -334,10 +377,10 @@ class PembayaranSPP extends Page implements HasForms
     {
         $data = $this->form->getState();
 
-        if (!$this->studentId || count($this->unpaidMonths) === 0) {
+        if (!$this->studentId || count($this->availableMonths) === 0) {
             Notification::make()
                 ->title('Error')
-                ->body('Tidak ada tunggakan untuk siswa ini')
+                ->body('Tidak ada bulan yang bisa dibayar untuk siswa ini')
                 ->danger()
                 ->send();
             return;
@@ -359,8 +402,9 @@ class PembayaranSPP extends Page implements HasForms
             $monthsToPay = (int) $data['months_to_pay'];
             $amountPerMonth = (float) $data['amount_per_month'];
 
-            // Create payments for the oldest unpaid months (FIFO)
-            $monthsToProcess = array_slice($this->unpaidMonths, 0, $monthsToPay);
+            // Create payments for the oldest available months (FIFO)
+            // Ini bisa include tunggakan + opsional
+            $monthsToProcess = array_slice($this->availableMonths, 0, $monthsToPay);
 
             foreach ($monthsToProcess as $month) {
                 Payment::create([
