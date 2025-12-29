@@ -1,14 +1,14 @@
 <?php
 
-namespace App\Filament\Resources\SppRates\Pages;
+namespace App\Filament\Resources\FeeRates\Pages;
 
-use App\Filament\Resources\SppRates\SppRateResource;
+use App\Filament\Resources\FeeRates\FeeRateResource;
 use Filament\Actions\CreateAction;
 use Filament\Resources\Pages\ListRecords;
 
-class ListSppRates extends ListRecords
+class ListFeeRates extends ListRecords
 {
-    protected static string $resource = SppRateResource::class;
+    protected static string $resource = FeeRateResource::class;
 
     protected function getHeaderActions(): array
     {

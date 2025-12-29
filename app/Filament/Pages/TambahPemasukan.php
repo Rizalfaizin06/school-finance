@@ -9,18 +9,15 @@ use Filament\Schemas\Components\Grid;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\DatePicker;
-use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\Placeholder;
 use Filament\Notifications\Notification;
 use App\Models\FeeType;
+use App\Models\FeeRate;
 use App\Models\Student;
 use App\Models\Account;
 use App\Models\AcademicYear;
 use App\Models\Payment;
-use App\Models\SppRate;
-use Carbon\Carbon;
+use App\Models\ClassRoom;
 use Illuminate\Support\HtmlString;
 use UnitEnum;
 use BackedEnum;
@@ -43,10 +40,13 @@ class TambahPemasukan extends Page implements HasForms
 
     public ?array $data = [];
     public $feeTypeId = null;
+    public $feeRateId = null;
     public $accountId = null;
-    public $studentId = null;
     public $academicYearId = null;
-    public $monthsData = [];
+    public $paymentMethod = 'cash';
+    public $classFilter = null;
+    public $students = [];
+    public $selectedStudents = [];
 
     public function mount(): void
     {
@@ -62,8 +62,8 @@ class TambahPemasukan extends Page implements HasForms
     {
         return $schema
             ->components([
-                Section::make('Pilih Jenis Pemasukan')
-                    ->description('Pilih jenis pemasukan yang akan diinput')
+                Section::make('Detail Pemasukan')
+                    ->description('Lengkapi informasi pemasukan')
                     ->components([
                         Grid::make(2)
                             ->components([
@@ -75,7 +75,20 @@ class TambahPemasukan extends Page implements HasForms
                                     ->live()
                                     ->afterStateUpdated(function ($state) {
                                         $this->feeTypeId = $state;
-                                        $this->monthsData = [];
+                                        $this->feeRateId = null;
+                                        $this->students = [];
+                                        $this->selectedStudents = [];
+                                    }),
+
+                                Select::make('fee_rate_id')
+                                    ->label(fn() => $this->isSppType() ? 'Tarif SPP' : 'Pilih Item')
+                                    ->options(fn() => $this->getFeeRateOptions())
+                                    ->required()
+                                    ->native(false)
+                                    ->live()
+                                    ->visible(fn() => $this->feeTypeId !== null)
+                                    ->afterStateUpdated(function ($state) {
+                                        $this->feeRateId = $state;
                                     }),
 
                                 Select::make('account_id')
@@ -87,88 +100,9 @@ class TambahPemasukan extends Page implements HasForms
                                     ->afterStateUpdated(function ($state) {
                                         $this->accountId = $state;
                                     }),
-                            ]),
-                    ]),
-
-                // SPP Form
-                Section::make('Input SPP')
-                    ->description('Pilih siswa dan klik tombol Terima pada bulan yang ingin dibayar')
-                    ->components([
-                        Grid::make(2)
-                            ->components([
-                                Select::make('student_id')
-                                    ->label('Siswa')
-                                    ->options(Student::where('status', 'active')
-                                        ->orderBy('name')
-                                        ->get()
-                                        ->mapWithKeys(fn($s) => [$s->id => $s->nis . ' - ' . $s->name]))
-                                    ->searchable()
-                                    ->required()
-                                    ->native(false)
-                                    ->live()
-                                    ->afterStateUpdated(function ($state) {
-                                        $this->studentId = $state;
-                                        if ($this->academicYearId) {
-                                            $this->loadSppMonths();
-                                        }
-                                    }),
-
-                                Select::make('academic_year_id')
-                                    ->label('Tahun Ajaran')
-                                    ->options(AcademicYear::orderBy('name', 'desc')->pluck('name', 'id'))
-                                    ->required()
-                                    ->native(false)
-                                    ->live()
-                                    ->afterStateUpdated(function ($state) {
-                                        $this->academicYearId = $state;
-                                        if ($this->studentId) {
-                                            $this->loadSppMonths();
-                                        }
-                                    }),
-                            ]),
-
-                        Placeholder::make('months_table')
-                            ->label('')
-                            ->content(fn() => $this->getMonthsTableHtml()),
-                    ])
-                    ->visible(fn() => $this->isSppType()),
-
-                // General Form (for non-SPP)
-                Section::make('Input Pemasukan')
-                    ->components([
-                        Grid::make(2)
-                            ->components([
-                                Select::make('student_id_general')
-                                    ->label('Siswa')
-                                    ->options(Student::where('status', 'active')
-                                        ->orderBy('name')
-                                        ->get()
-                                        ->mapWithKeys(fn($s) => [$s->id => $s->nis . ' - ' . $s->name]))
-                                    ->searchable()
-                                    ->required()
-                                    ->native(false),
-
-                                Select::make('academic_year_id_general')
-                                    ->label('Tahun Ajaran')
-                                    ->options(AcademicYear::orderBy('name', 'desc')->pluck('name', 'id'))
-                                    ->required()
-                                    ->native(false),
-
-                                DatePicker::make('payment_date')
-                                    ->label('Tanggal')
-                                    ->required()
-                                    ->default(now())
-                                    ->native(false),
-
-                                TextInput::make('amount')
-                                    ->label('Jumlah')
-                                    ->required()
-                                    ->numeric()
-                                    ->prefix('Rp')
-                                    ->placeholder('0'),
 
                                 Select::make('payment_method')
-                                    ->label('Metode')
+                                    ->label('Metode Pembayaran')
                                     ->options([
                                         'cash' => 'Tunai',
                                         'transfer' => 'Transfer',
@@ -176,22 +110,36 @@ class TambahPemasukan extends Page implements HasForms
                                     ])
                                     ->default('cash')
                                     ->required()
-                                    ->native(false),
-
-                                Textarea::make('notes')
-                                    ->label('Catatan')
-                                    ->rows(3)
-                                    ->columnSpanFull(),
+                                    ->native(false)
+                                    ->live()
+                                    ->afterStateUpdated(function ($state) {
+                                        $this->paymentMethod = $state;
+                                    }),
                             ]),
                     ])
-                    ->visible(fn() => !$this->isSppType() && $this->feeTypeId)
-                    ->footerActions([
-                        \Filament\Actions\Action::make('save')
-                            ->label('Simpan Pemasukan')
-                            ->action('saveGeneralIncome')
-                            ->requiresConfirmation()
-                            ->color('success'),
-                    ]),
+                    ->visible(fn() => true),
+
+                Section::make('Pilih Siswa')
+                    ->description('Filter kelas dan pilih siswa yang akan membayar')
+                    ->components([
+                        Grid::make(1)
+                            ->components([
+                                Select::make('class_filter')
+                                    ->label('Filter Kelas')
+                                    ->options(ClassRoom::orderBy('name')->pluck('name', 'id'))
+                                    ->native(false)
+                                    ->live()
+                                    ->afterStateUpdated(function ($state) {
+                                        $this->classFilter = $state;
+                                        $this->loadStudents();
+                                    }),
+
+                                Placeholder::make('students_table')
+                                    ->label('')
+                                    ->content(fn() => $this->getStudentsTableHtml()),
+                            ]),
+                    ])
+                    ->visible(fn() => $this->feeRateId && $this->accountId && $this->paymentMethod),
             ])
             ->statePath('data');
     }
@@ -205,123 +153,104 @@ class TambahPemasukan extends Page implements HasForms
         return $feeType && str_contains(strtolower($feeType->name), 'spp');
     }
 
-    protected function loadSppMonths(): void
+    protected function getFeeRateOptions(): array
     {
-        if (!$this->studentId || !$this->academicYearId) {
-            $this->monthsData = [];
-            return;
-        }
+        if (!$this->feeTypeId)
+            return [];
 
-        $student = Student::find($this->studentId);
-        $academicYear = AcademicYear::find($this->academicYearId);
+        $query = FeeRate::where('fee_type_id', $this->feeTypeId)
+            ->where('is_active', true);
 
-        if (!$student || !$academicYear)
-            return;
+        // Tampilkan semua items tanpa filter tahun ajaran
+        // Untuk SPP maupun kegiatan lainnya
 
-        // Check if student is registered in this academic year
-        $studentClass = $student->getClassForYear($this->academicYearId);
-        if (!$studentClass) {
-            Notification::make()
-                ->warning()
-                ->title('Siswa tidak terdaftar')
-                ->body('Siswa tidak terdaftar di tahun ajaran ini.')
-                ->send();
-            $this->monthsData = [];
-            return;
-        }
-
-        $this->monthsData = $this->generate12Months($academicYear, $student);
+        return $query->get()
+            ->mapWithKeys(fn($rate) => [
+                $rate->id => $rate->name . ' - Rp ' . number_format($rate->amount, 0, ',', '.')
+            ])
+            ->toArray();
     }
 
-    protected function generate12Months($academicYear, $student): array
+    protected function loadStudents(): void
     {
-        $months = [];
-        $startMonth = $academicYear->start_month;
-        $currentMonth = $startMonth;
-        $currentYear = (int) explode('/', $academicYear->name)[0];
+        if (!$this->classFilter) {
+            $this->students = [];
+            return;
+        }
 
-        $monthNames = [
-            1 => 'Januari',
-            2 => 'Februari',
-            3 => 'Maret',
-            4 => 'April',
-            5 => 'Mei',
-            6 => 'Juni',
-            7 => 'Juli',
-            8 => 'Agustus',
-            9 => 'September',
-            10 => 'Oktober',
-            11 => 'November',
-            12 => 'Desember'
-        ];
-
-        $payments = Payment::where('student_id', $student->id)
-            ->where('academic_year_id', $academicYear->id)
-            ->where('fee_type_id', $this->feeTypeId)
-            ->get();
-
-        for ($i = 0; $i < 12; $i++) {
-            $year = $currentYear;
-
-            if ($currentMonth > 12) {
-                $currentMonth = 1;
-                $year++;
+        // Get academic year from selected fee rate (for SPP) or use active year
+        $academicYearId = $this->academicYearId;
+        
+        if ($this->feeRateId) {
+            $feeRate = FeeRate::find($this->feeRateId);
+            if ($feeRate && $feeRate->academic_year_id) {
+                $academicYearId = $feeRate->academic_year_id;
             }
-
-            $payment = $payments->first(function ($p) use ($currentMonth, $year) {
-                return $p->month == $currentMonth && $p->year == $year;
-            });
-
-            $months[] = [
-                'month' => $currentMonth,
-                'year' => $year,
-                'month_name' => $monthNames[$currentMonth] . ' ' . $year,
-                'is_paid' => $payment !== null,
-                'payment' => $payment,
-            ];
-
-            $currentMonth++;
         }
 
-        return $months;
+        if (!$academicYearId) {
+            $this->students = [];
+            return;
+        }
+
+        // Get students in this class for this academic year
+        $this->students = Student::where('status', 'active')
+            ->whereHas('studentClasses', function ($q) use ($academicYearId) {
+                $q->where('class_id', $this->classFilter)
+                    ->where('academic_year_id', $academicYearId);
+            })
+            ->orderBy('name')
+            ->get()
+            ->toArray();
     }
 
-    protected function getMonthsTableHtml(): HtmlString
+    protected function getStudentsTableHtml(): HtmlString
     {
-        if (empty($this->monthsData)) {
-            return new HtmlString('<p style="color: #6b7280;">Pilih siswa untuk melihat status pembayaran SPP</p>');
+        if (empty($this->students)) {
+            if (!$this->classFilter) {
+                return new HtmlString('<p style="color: #6b7280;">Pilih kelas untuk melihat daftar siswa</p>');
+            }
+            return new HtmlString('<p style="color: #6b7280;">Tidak ada siswa di kelas ini</p>');
         }
 
-        $sppRate = SppRate::where('academic_year_id', $this->academicYearId)->first();
+        $feeRate = FeeRate::find($this->feeRateId);
+        if (!$feeRate) {
+            return new HtmlString('<p style="color: #ef4444;">Error: Tarif tidak ditemukan</p>');
+        }
 
-        $html = '<div style="overflow-x: auto; border-radius: 0.5rem; border: 1px solid #e5e7eb; margin-top: 1rem;">';
+        $html = '<div style="margin-bottom: 1rem;">';
+        $html .= '<button wire:click="selectAll" type="button" style="padding: 0.5rem 1rem; background-color: #3b82f6; color: white; border-radius: 0.375rem; margin-right: 0.5rem; border: none; cursor: pointer;">Select All</button>';
+        $html .= '<button wire:click="deselectAll" type="button" style="padding: 0.5rem 1rem; background-color: #6b7280; color: white; border-radius: 0.375rem; margin-right: 1rem; border: none; cursor: pointer;">Deselect All</button>';
+        $html .= '<button wire:click="bulkPay" type="button" style="padding: 0.5rem 1rem; background-color: #10b981; color: white; border-radius: 0.375rem; font-weight: 600; border: none; cursor: pointer;">Terima Pembayaran (' . count($this->selectedStudents) . ' siswa)</button>';
+        $html .= '</div>';
+
+        $html .= '<div style="overflow-x: auto; border-radius: 0.5rem; border: 1px solid #e5e7eb;">';
         $html .= '<table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">';
         $html .= '<thead style="background-color: #f9fafb;">';
         $html .= '<tr>';
+        $html .= '<th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600; border-bottom: 1px solid #e5e7eb; width: 50px;">
+                    <input type="checkbox" wire:click="toggleSelectAll" ' . (count($this->selectedStudents) === count($this->students) && count($this->students) > 0 ? 'checked' : '') . ' style="cursor: pointer;">
+                  </th>';
         $html .= '<th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600; border-bottom: 1px solid #e5e7eb;">No</th>';
-        $html .= '<th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600; border-bottom: 1px solid #e5e7eb;">Bulan</th>';
-        $html .= '<th style="padding: 0.75rem 1rem; text-align: center; font-weight: 600; border-bottom: 1px solid #e5e7eb;">Status</th>';
-        $html .= '<th style="padding: 0.75rem 1rem; text-align: center; font-weight: 600; border-bottom: 1px solid #e5e7eb;">Aksi</th>';
+        $html .= '<th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600; border-bottom: 1px solid #e5e7eb;">NIS</th>';
+        $html .= '<th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600; border-bottom: 1px solid #e5e7eb;">Nama</th>';
+        $html .= '<th style="padding: 0.75rem 1rem; text-align: right; font-weight: 600; border-bottom: 1px solid #e5e7eb;">Jumlah</th>';
         $html .= '</tr>';
         $html .= '</thead>';
         $html .= '<tbody>';
 
-        foreach ($this->monthsData as $index => $month) {
+        foreach ($this->students as $index => $student) {
+            $isSelected = in_array($student['id'], $this->selectedStudents);
             $rowBg = $index % 2 == 0 ? 'background-color: white;' : 'background-color: #f9fafb;';
-            $html .= '<tr style="' . $rowBg . '">';
+
+            $html .= '<tr style="' . $rowBg . ($isSelected ? ' background-color: #dbeafe;' : '') . '">';
+            $html .= '<td style="padding: 0.75rem 1rem; border-bottom: 1px solid #e5e7eb;">
+                        <input type="checkbox" wire:click="toggleStudent(' . $student['id'] . ')" ' . ($isSelected ? 'checked' : '') . ' style="cursor: pointer;">
+                      </td>';
             $html .= '<td style="padding: 0.75rem 1rem; border-bottom: 1px solid #e5e7eb;">' . ($index + 1) . '</td>';
-            $html .= '<td style="padding: 0.75rem 1rem; border-bottom: 1px solid #e5e7eb; font-weight: 500;">' . $month['month_name'] . '</td>';
-
-            if ($month['is_paid']) {
-                $html .= '<td style="padding: 0.75rem 1rem; text-align: center; border-bottom: 1px solid #e5e7eb;"><span style="padding: 0.25rem 0.75rem; background-color: #d1fae5; color: #065f46; border-radius: 9999px; font-size: 0.75rem; font-weight: 600;">Lunas</span></td>';
-                $html .= '<td style="padding: 0.75rem 1rem; text-align: center; border-bottom: 1px solid #e5e7eb; color: #9ca3af;">-</td>';
-            } else {
-                $html .= '<td style="padding: 0.75rem 1rem; text-align: center; border-bottom: 1px solid #e5e7eb;"><span style="padding: 0.25rem 0.75rem; background-color: #fee2e2; color: #991b1b; border-radius: 9999px; font-size: 0.75rem; font-weight: 600;">Belum</span></td>';
-                $html .= '<td style="padding: 0.75rem 1rem; text-align: center; border-bottom: 1px solid #e5e7eb;">';
-                $html .= '<button wire:click="paySppMonth(' . $month['month'] . ', ' . $month['year'] . ')" type="button" style="padding: 0.375rem 0.75rem; background-color: #3b82f6; color: white; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 500; cursor: pointer; border: none;">Terima (Rp ' . number_format($sppRate?->amount ?? 0, 0, ',', '.') . ')</button>';
-                $html .= '</td>';
-            }
-
+            $html .= '<td style="padding: 0.75rem 1rem; border-bottom: 1px solid #e5e7eb; font-weight: 500;">' . ($student['nis'] ?? '-') . '</td>';
+            $html .= '<td style="padding: 0.75rem 1rem; border-bottom: 1px solid #e5e7eb;">' . $student['name'] . '</td>';
+            $html .= '<td style="padding: 0.75rem 1rem; border-bottom: 1px solid #e5e7eb; text-align: right; font-weight: 600;">Rp ' . number_format($feeRate->amount, 0, ',', '.') . '</td>';
             $html .= '</tr>';
         }
 
@@ -329,97 +258,131 @@ class TambahPemasukan extends Page implements HasForms
         $html .= '</table>';
         $html .= '</div>';
 
+        $html .= '<div style="margin-top: 1rem; padding: 1rem; background-color: #f9fafb; border-radius: 0.5rem;">';
+        $html .= '<p style="font-weight: 600; margin-bottom: 0.5rem;">Ringkasan:</p>';
+        $html .= '<p>Total Siswa Dipilih: <strong>' . count($this->selectedStudents) . '</strong></p>';
+        $html .= '<p>Total Pembayaran: <strong>Rp ' . number_format($feeRate->amount * count($this->selectedStudents), 0, ',', '.') . '</strong></p>';
+        $html .= '</div>';
+
         return new HtmlString($html);
     }
 
-    public function paySppMonth($month, $year): void
+    public function toggleStudent($studentId): void
     {
-        if (!$this->accountId) {
-            Notification::make()
-                ->danger()
-                ->title('Error')
-                ->body('Pilih akun kas terlebih dahulu')
-                ->send();
-            return;
+        if (in_array($studentId, $this->selectedStudents)) {
+            $this->selectedStudents = array_values(array_diff($this->selectedStudents, [$studentId]));
+        } else {
+            $this->selectedStudents[] = $studentId;
         }
-
-        $sppRate = SppRate::where('academic_year_id', $this->academicYearId)->first();
-
-        if (!$sppRate) {
-            Notification::make()
-                ->danger()
-                ->title('Error')
-                ->body('Tarif SPP belum diset untuk tahun ajaran ini')
-                ->send();
-            return;
-        }
-
-        // Generate receipt number
-        $lastPayment = Payment::latest('id')->first();
-        $receiptNumber = 'PMK-' . date('Ymd') . '-' . str_pad(($lastPayment?->id ?? 0) + 1, 4, '0', STR_PAD_LEFT);
-
-        Payment::create([
-            'receipt_number' => $receiptNumber,
-            'student_id' => $this->studentId,
-            'fee_type_id' => $this->feeTypeId,
-            'account_id' => $this->accountId,
-            'academic_year_id' => $this->academicYearId,
-            'payment_date' => now(),
-            'month' => $month,
-            'year' => $year,
-            'amount' => $sppRate->amount,
-            'payment_method' => 'cash',
-            'created_by' => auth()->id(),
-        ]);
-
-        Notification::make()
-            ->success()
-            ->title('Berhasil')
-            ->body('SPP berhasil diterima')
-            ->send();
-
-        $this->loadSppMonths();
     }
 
-    public function saveGeneralIncome(): void
+    public function selectAll(): void
     {
-        $validated = $this->form->getState();
+        $this->selectedStudents = array_column($this->students, 'id');
+    }
 
-        if (!$this->accountId) {
+    public function deselectAll(): void
+    {
+        $this->selectedStudents = [];
+    }
+
+    public function toggleSelectAll(): void
+    {
+        if (count($this->selectedStudents) === count($this->students) && count($this->students) > 0) {
+            $this->deselectAll();
+        } else {
+            $this->selectAll();
+        }
+    }
+
+    public function bulkPay(): void
+    {
+        if (empty($this->selectedStudents)) {
             Notification::make()
-                ->danger()
-                ->title('Error')
-                ->body('Pilih akun kas terlebih dahulu')
+                ->warning()
+                ->title('Tidak ada siswa dipilih')
+                ->body('Pilih minimal satu siswa untuk melakukan pembayaran')
                 ->send();
             return;
         }
 
-        $lastPayment = Payment::latest('id')->first();
-        $receiptNumber = 'PMK-' . date('Ymd') . '-' . str_pad(($lastPayment?->id ?? 0) + 1, 4, '0', STR_PAD_LEFT);
+        if (!$this->feeRateId || !$this->accountId || !$this->academicYearId) {
+            Notification::make()
+                ->danger()
+                ->title('Data tidak lengkap')
+                ->body('Pastikan semua field sudah diisi')
+                ->send();
+            return;
+        }
 
-        Payment::create([
-            'receipt_number' => $receiptNumber,
-            'student_id' => $validated['student_id_general'],
-            'fee_type_id' => $this->feeTypeId,
-            'account_id' => $this->accountId,
-            'academic_year_id' => $validated['academic_year_id_general'],
-            'payment_date' => $validated['payment_date'],
-            'month' => null,
-            'year' => null,
-            'amount' => $validated['amount'],
-            'payment_method' => $validated['payment_method'],
-            'notes' => $validated['notes'] ?? null,
-            'created_by' => auth()->id(),
-        ]);
+        $feeRate = FeeRate::find($this->feeRateId);
+        if (!$feeRate) {
+            Notification::make()
+                ->danger()
+                ->title('Error')
+                ->body('Tarif tidak ditemukan')
+                ->send();
+            return;
+        }
 
-        Notification::make()
-            ->success()
-            ->title('Berhasil')
-            ->body('Pemasukan berhasil disimpan')
-            ->send();
+        $successCount = 0;
+        $failedCount = 0;
 
-        $this->form->fill();
-        $this->feeTypeId = null;
-        $this->studentId = null;
+        foreach ($this->selectedStudents as $studentId) {
+            try {
+                // Generate receipt number
+                $lastPayment = Payment::latest('id')->first();
+                $receiptNumber = 'PMK-' . date('Ymd') . '-' . str_pad(($lastPayment?->id ?? 0) + 1, 4, '0', STR_PAD_LEFT);
+
+                // For SPP, use current month/year, for others null
+                $month = null;
+                $year = null;
+
+                if ($this->isSppType()) {
+                    $month = now()->month;
+                    $year = now()->year;
+                }
+
+                // Get academic year from fee rate or use default
+                $academicYearId = $feeRate->academic_year_id ?? $this->academicYearId;
+
+                Payment::create([
+                    'receipt_number' => $receiptNumber,
+                    'student_id' => $studentId,
+                    'fee_type_id' => $this->feeTypeId,
+                    'account_id' => $this->accountId,
+                    'academic_year_id' => $academicYearId,
+                    'payment_date' => now(),
+                    'month' => $month,
+                    'year' => $year,
+                    'amount' => $feeRate->amount,
+                    'payment_method' => $this->paymentMethod,
+                    'notes' => 'Bulk payment: ' . $feeRate->name,
+                    'created_by' => auth()->id(),
+                ]);
+
+                $successCount++;
+            } catch (\Exception $e) {
+                $failedCount++;
+            }
+        }
+
+        if ($successCount > 0) {
+            Notification::make()
+                ->success()
+                ->title('Pembayaran Berhasil')
+                ->body("$successCount pembayaran berhasil disimpan" . ($failedCount > 0 ? ", $failedCount gagal" : ''))
+                ->send();
+
+            // Reset selection
+            $this->selectedStudents = [];
+            $this->loadStudents();
+        } else {
+            Notification::make()
+                ->danger()
+                ->title('Pembayaran Gagal')
+                ->body('Semua pembayaran gagal diproses')
+                ->send();
+        }
     }
 }
