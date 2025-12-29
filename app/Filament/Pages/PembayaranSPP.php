@@ -57,7 +57,7 @@ class PembayaranSPP extends Page implements HasForms
         if ($activeYear) {
             $this->academicYearId = $activeYear->id;
         }
-        
+
         $this->form->fill();
     }
 
@@ -123,16 +123,31 @@ class PembayaranSPP extends Page implements HasForms
             return;
         }
 
-        $student = Student::with('class')->find($this->studentId);
+        $student = Student::find($this->studentId);
         $academicYear = AcademicYear::find($this->academicYearId);
-        
+
         if (!$student || !$academicYear) {
+            return;
+        }
+
+        // Get student's class for this academic year via student_classes
+        $studentClass = $student->getClassForYear($this->academicYearId);
+
+        // Check if student is registered in this academic year
+        if (!$studentClass) {
+            $this->studentInfo = null;
+            $this->monthsData = [];
+            Notification::make()
+                ->warning()
+                ->title('Siswa tidak terdaftar')
+                ->body('Siswa tidak terdaftar di tahun ajaran ini.')
+                ->send();
             return;
         }
 
         // Get SPP rate for this academic year
         $sppRate = SppRate::where('academic_year_id', $academicYear->id)->first();
-        
+
         // Generate 12 months based on academic year
         $this->monthsData = $this->generate12Months($academicYear, $student);
 
@@ -143,6 +158,8 @@ class PembayaranSPP extends Page implements HasForms
         $this->studentInfo = [
             'student' => $student,
             'academic_year' => $academicYear,
+            'student_class' => $studentClass,
+            'class_name' => $studentClass->classRoom->name,
             'spp_rate' => $sppRate,
             'total_paid' => $paidCount,
             'total_unpaid' => $unpaidCount,
@@ -154,37 +171,46 @@ class PembayaranSPP extends Page implements HasForms
         $months = [];
         $startMonth = $academicYear->start_month; // 7 (Juli)
         $endMonth = $academicYear->end_month; // 6 (Juni)
-        
+
         $currentMonth = $startMonth;
         $currentYear = (int) explode('/', $academicYear->name)[0]; // 2025 dari "2025/2026"
-        
+
         $monthNames = [
-            1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April',
-            5 => 'Mei', 6 => 'Juni', 7 => 'Juli', 8 => 'Agustus',
-            9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember'
+            1 => 'Januari',
+            2 => 'Februari',
+            3 => 'Maret',
+            4 => 'April',
+            5 => 'Mei',
+            6 => 'Juni',
+            7 => 'Juli',
+            8 => 'Agustus',
+            9 => 'September',
+            10 => 'Oktober',
+            11 => 'November',
+            12 => 'Desember'
         ];
-        
+
         // Get paid months for this student & academic year
         $sppFeeType = FeeType::where('name', 'LIKE', '%SPP%')->first();
         $payments = Payment::where('student_id', $student->id)
             ->where('academic_year_id', $academicYear->id)
             ->where('fee_type_id', $sppFeeType?->id)
             ->get();
-        
+
         for ($i = 0; $i < 12; $i++) {
             $year = $currentYear;
-            
+
             // If month wraps around (e.g., Juli 2025 -> Juni 2026)
             if ($currentMonth > 12) {
                 $currentMonth = 1;
                 $year++;
             }
-            
+
             // Check if this month is paid
             $payment = $payments->first(function ($p) use ($currentMonth, $year) {
                 return $p->month == $currentMonth && $p->year == $year;
             });
-            
+
             $months[] = [
                 'month' => $currentMonth,
                 'year' => $year,
@@ -195,10 +221,10 @@ class PembayaranSPP extends Page implements HasForms
                 'payment_date' => $payment ? Carbon::parse($payment->payment_date)->format('d/m/Y') : null,
                 'amount' => $payment?->amount,
             ];
-            
+
             $currentMonth++;
         }
-        
+
         return $months;
     }
 
@@ -212,12 +238,13 @@ class PembayaranSPP extends Page implements HasForms
         $student = $info['student'];
         $academicYear = $info['academic_year'];
         $sppRate = $info['spp_rate'];
+        $className = $info['class_name'] ?? '-';
 
         $html = '<div style="display: flex; flex-direction: column; gap: 0.75rem;">';
         $html .= '<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem;">';
         $html .= '<div><strong style="font-size: 0.75rem; color: #6b7280;">NIS:</strong> <span style="font-weight: 500;">' . $student->nis . '</span></div>';
         $html .= '<div><strong style="font-size: 0.75rem; color: #6b7280;">Nama:</strong> <span style="font-weight: 500;">' . $student->name . '</span></div>';
-        $html .= '<div><strong style="font-size: 0.75rem; color: #6b7280;">Kelas:</strong> <span style="font-weight: 500;">' . ($student->class->name ?? '-') . '</span></div>';
+        $html .= '<div><strong style="font-size: 0.75rem; color: #6b7280;">Kelas:</strong> <span style="font-weight: 500;">' . $className . '</span></div>';
         $html .= '<div><strong style="font-size: 0.75rem; color: #6b7280;">Tahun Ajaran:</strong> <span style="font-weight: 500;">' . $academicYear->name . '</span></div>';
         $html .= '</div>';
 
@@ -269,7 +296,7 @@ class PembayaranSPP extends Page implements HasForms
             $html .= '<td style="padding: 0.75rem 1rem;">' . ($month['payment_date'] ?? '-') . '</td>';
             $html .= '<td style="padding: 0.75rem 1rem; text-align: right; font-weight: 500;">' . ($month['amount'] ? 'Rp ' . number_format($month['amount'], 0, ',', '.') : '-') . '</td>';
             $html .= '<td style="padding: 0.75rem 1rem; font-family: monospace; font-size: 0.75rem; color: #6b7280;">' . $month['receipt_number'] . '</td>';
-            
+
             // Action button
             if (!$month['is_paid']) {
                 $html .= '<td style="padding: 0.75rem 1rem; text-align: center;">';
@@ -278,7 +305,7 @@ class PembayaranSPP extends Page implements HasForms
             } else {
                 $html .= '<td style="padding: 0.75rem 1rem; text-align: center; color: #9ca3af;">-</td>';
             }
-            
+
             $html .= '</tr>';
         }
 
@@ -334,7 +361,7 @@ class PembayaranSPP extends Page implements HasForms
 
             // Create payment
             $receiptNumber = 'SPP/' . now()->format('Ymd') . '/' . str_pad(Payment::count() + 1, 4, '0', STR_PAD_LEFT);
-            
+
             Payment::create([
                 'receipt_number' => $receiptNumber,
                 'student_id' => $this->studentId,
@@ -371,9 +398,18 @@ class PembayaranSPP extends Page implements HasForms
     protected function getMonthName($month)
     {
         $months = [
-            1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April',
-            5 => 'Mei', 6 => 'Juni', 7 => 'Juli', 8 => 'Agustus',
-            9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember'
+            1 => 'Januari',
+            2 => 'Februari',
+            3 => 'Maret',
+            4 => 'April',
+            5 => 'Mei',
+            6 => 'Juni',
+            7 => 'Juli',
+            8 => 'Agustus',
+            9 => 'September',
+            10 => 'Oktober',
+            11 => 'November',
+            12 => 'Desember'
         ];
         return $months[$month];
     }

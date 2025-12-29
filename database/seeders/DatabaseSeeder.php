@@ -23,7 +23,7 @@ class DatabaseSeeder extends Seeder
 
                 // Step 2: Master Data (Academic Year, Fee Types, Categories, Accounts)
             MasterDataSeeder::class,
-            
+
                 // Step 2.5: SPP Rates (requires Academic Year)
             SppRateSeeder::class,
 
@@ -32,7 +32,8 @@ class DatabaseSeeder extends Seeder
 
                 // Step 4: Students (requires Classes)
             StudentSeeder::class,
-
+                // Step 4.5: Student Classes (requires Students, Classes, Academic Years)
+            StudentClassSeeder::class,
                 // Step 5: Payments (requires Students, Fee Types, Accounts)
             PaymentSeeder::class,
 

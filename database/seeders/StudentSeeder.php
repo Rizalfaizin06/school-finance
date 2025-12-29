@@ -64,7 +64,7 @@ class StudentSeeder extends Seeder
                     'birth_place' => ['Jakarta', 'Bandung', 'Surabaya', 'Semarang', 'Yogyakarta'][rand(0, 4)],
                     'birth_date' => Carbon::now()->subYears(6 + $class->grade_level)->subDays(rand(0, 365))->format('Y-m-d'),
                     'address' => 'Jl. Pendidikan No. ' . rand(1, 100) . ', RT 00' . rand(1, 9) . '/RW 00' . rand(1, 9),
-                    'class_id' => $class->id,
+                    // class_id removed - will be set via student_classes pivot table
                     'enrollment_date' => '2024-07-01',
                     'status' => 'active',
                     'parent_name' => 'Bpk/Ibu ' . $randomName,

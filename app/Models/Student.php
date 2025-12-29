@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Student extends Model
 {
@@ -16,7 +17,6 @@ class Student extends Model
         'birth_place',
         'birth_date',
         'address',
-        'class_id',
         'enrollment_date',
         'status',
         'parent_name',
@@ -29,9 +29,29 @@ class Student extends Model
         'enrollment_date' => 'date',
     ];
 
-    public function class(): BelongsTo
+    // Relasi ke kelas melalui pivot table student_classes
+    public function studentClasses(): HasMany
     {
-        return $this->belongsTo(ClassRoom::class, 'class_id');
+        return $this->hasMany(StudentClass::class);
+    }
+
+    // Get class for specific academic year
+    public function getClassForYear($academicYearId)
+    {
+        return $this->studentClasses()
+            ->where('academic_year_id', $academicYearId)
+            ->with('classRoom')
+            ->first();
+    }
+
+    // Get current class (based on active academic year)
+    public function getCurrentClass()
+    {
+        $activeYear = AcademicYear::where('is_active', true)->first();
+        if (!$activeYear) {
+            return null;
+        }
+        return $this->getClassForYear($activeYear->id)?->classRoom;
     }
 
     public function payments(): HasMany

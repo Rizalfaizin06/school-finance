@@ -10,9 +10,9 @@ return new class extends Migration {
      */
     public function up(): void
     {
-        Schema::table('academic_years', function (Blueprint $table) {
-            $table->integer('start_month')->default(7)->after('name'); // Juli = 7
-            $table->integer('end_month')->default(6)->after('start_month'); // Juni = 6
+        Schema::table('students', function (Blueprint $table) {
+            $table->dropForeign(['class_id']);
+            $table->dropColumn('class_id');
         });
     }
 
@@ -21,8 +21,8 @@ return new class extends Migration {
      */
     public function down(): void
     {
-        Schema::table('academic_years', function (Blueprint $table) {
-            $table->dropColumn(['start_month', 'end_month']);
+        Schema::table('students', function (Blueprint $table) {
+            $table->foreignId('class_id')->nullable()->constrained()->nullOnDelete();
         });
     }
 };

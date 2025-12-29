@@ -57,9 +57,6 @@ class StudentResource extends Resource
                 Textarea::make('address')
                     ->default(null)
                     ->columnSpanFull(),
-                Select::make('class_id')
-                    ->relationship('class', 'name')
-                    ->default(null),
                 DatePicker::make('enrollment_date')
                     ->required(),
                 Select::make('status')
@@ -100,8 +97,14 @@ class StudentResource extends Resource
                 TextColumn::make('birth_date')
                     ->date()
                     ->sortable(),
-                TextColumn::make('class.name')
-                    ->searchable(),
+                TextColumn::make('current_class')
+                    ->label('Kelas')
+                    ->state(function (Student $record): string {
+                        $currentClass = $record->getCurrentClass();
+                        return $currentClass?->name ?? '-';
+                    })
+                    ->searchable(false)
+                    ->sortable(false),
                 TextColumn::make('enrollment_date')
                     ->date()
                     ->sortable(),

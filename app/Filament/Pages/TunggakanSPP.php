@@ -9,6 +9,8 @@ use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Concerns\InteractsWithTable;
 use App\Models\Student;
 use App\Models\Payment;
+use App\Models\StudentClass;
+use App\Models\AcademicYear;
 use Carbon\Carbon;
 use UnitEnum;
 use BackedEnum;
@@ -123,9 +125,32 @@ class TunggakanSPP extends Page implements HasTable
                     ->searchable(),
             ])
             ->filters([
-                Tables\Filters\SelectFilter::make('class_id')
+                Tables\Filters\SelectFilter::make('class')
                     ->label('Kelas')
-                    ->relationship('class', 'name'),
+                    ->options(function () {
+                        $activeYear = AcademicYear::where('is_active', true)->first();
+                        if (!$activeYear)
+                            return [];
+
+                        return StudentClass::where('academic_year_id', $activeYear->id)
+                            ->with('classRoom')
+                            ->get()
+                            ->pluck('classRoom.name', 'class_id')
+                            ->unique();
+                    })
+                    ->query(function ($query, $data) {
+                        if (!isset($data['value']))
+                            return $query;
+
+                        $activeYear = AcademicYear::where('is_active', true)->first();
+                        if (!$activeYear)
+                            return $query;
+
+                        return $query->whereHas('studentClasses', function ($q) use ($data, $activeYear) {
+                            $q->where('class_id', $data['value'])
+                                ->where('academic_year_id', $activeYear->id);
+                        });
+                    }),
             ])
             ->heading('Siswa yang Belum Bayar SPP Bulan ' . Carbon::now()->format('F Y'))
             ->description('Daftar siswa aktif yang belum melakukan pembayaran SPP bulan ini')

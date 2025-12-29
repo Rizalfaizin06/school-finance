@@ -14,6 +14,7 @@ use App\Models\Payment;
 use App\Models\FeeType;
 use App\Models\Account;
 use App\Models\AcademicYear;
+use App\Models\StudentClass;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use UnitEnum;
@@ -99,9 +100,32 @@ class DetailPembayaranSiswa extends Page implements HasTable
                     ->weight('bold'),
             ])
             ->filters([
-                Tables\Filters\SelectFilter::make('class_id')
+                Tables\Filters\SelectFilter::make('class')
                     ->label('Kelas')
-                    ->relationship('class', 'name'),
+                    ->options(function () {
+                        $activeYear = AcademicYear::where('is_active', true)->first();
+                        if (!$activeYear)
+                            return [];
+
+                        return StudentClass::where('academic_year_id', $activeYear->id)
+                            ->with('classRoom')
+                            ->get()
+                            ->pluck('classRoom.name', 'class_id')
+                            ->unique();
+                    })
+                    ->query(function ($query, $data) {
+                        if (!isset($data['value']))
+                            return $query;
+
+                        $activeYear = AcademicYear::where('is_active', true)->first();
+                        if (!$activeYear)
+                            return $query;
+
+                        return $query->whereHas('studentClasses', function ($q) use ($data, $activeYear) {
+                            $q->where('class_id', $data['value'])
+                                ->where('academic_year_id', $activeYear->id);
+                        });
+                    }),
             ])
             ->actions([
                 Action::make('view_detail')
