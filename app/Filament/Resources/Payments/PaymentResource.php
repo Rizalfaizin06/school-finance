@@ -28,13 +28,13 @@ class PaymentResource extends Resource
 
     protected static UnitEnum|string|null $navigationGroup = 'Transaksi';
 
-    protected static ?string $navigationLabel = 'Pemasukan';
+    protected static ?string $navigationLabel = 'Daftar Pemasukan';
 
     protected static ?string $modelLabel = 'Pemasukan';
 
     protected static ?string $pluralModelLabel = 'Pemasukan';
 
-    protected static ?int $navigationSort = 2;
+    protected static ?int $navigationSort = 1;
 
     protected static ?string $recordTitleAttribute = 'Payment';
 

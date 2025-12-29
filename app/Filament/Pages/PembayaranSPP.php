@@ -44,6 +44,9 @@ class PembayaranSPP extends Page implements HasForms
 
     protected static ?int $navigationSort = 1;
 
+    // Hidden from navigation - accessible via Daftar Pemasukan > Tambah
+    protected static bool $shouldRegisterNavigation = false;
+
     public ?array $data = [];
     public $academicYearId = null;
     public $studentId = null;
