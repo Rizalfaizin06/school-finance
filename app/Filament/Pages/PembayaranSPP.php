@@ -36,9 +36,9 @@ class PembayaranSPP extends Page implements HasForms
 
     protected string $view = 'filament.pages.pembayaran-spp';
 
-    protected static ?string $navigationLabel = 'Pembayaran SPP';
+    protected static ?string $navigationLabel = 'Pemasukan SPP';
 
-    protected static ?string $title = 'Pembayaran SPP';
+    protected static ?string $title = 'Pemasukan SPP';
 
     protected static UnitEnum|string|null $navigationGroup = 'Transaksi';
 
@@ -300,7 +300,7 @@ class PembayaranSPP extends Page implements HasForms
             // Action button
             if (!$month['is_paid']) {
                 $html .= '<td style="padding: 0.75rem 1rem; text-align: center;">';
-                $html .= '<button wire:click="payMonth(' . $month['month'] . ', ' . $month['year'] . ')" type="button" style="padding: 0.375rem 0.75rem; background-color: #3b82f6; color: white; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 500; cursor: pointer; border: none;">Bayar</button>';
+                $html .= '<button wire:click="payMonth(' . $month['month'] . ', ' . $month['year'] . ')" type="button" style="padding: 0.375rem 0.75rem; background-color: #3b82f6; color: white; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 500; cursor: pointer; border: none;">Terima</button>';
                 $html .= '</td>';
             } else {
                 $html .= '<td style="padding: 0.75rem 1rem; text-align: center; color: #9ca3af;">-</td>';

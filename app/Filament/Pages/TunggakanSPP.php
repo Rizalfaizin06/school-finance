@@ -11,6 +11,7 @@ use App\Models\Student;
 use App\Models\Payment;
 use App\Models\StudentClass;
 use App\Models\AcademicYear;
+use App\Models\FeeType;
 use Carbon\Carbon;
 use UnitEnum;
 use BackedEnum;
@@ -25,7 +26,7 @@ class TunggakanSPP extends Page implements HasTable
 
     protected static ?string $navigationLabel = 'Tunggakan SPP';
 
-    protected static ?string $title = 'Daftar Siswa Tunggakan SPP';
+    protected static ?string $title = 'Daftar Tunggakan SPP';
 
     protected static UnitEnum|string|null $navigationGroup = 'Laporan';
 
@@ -33,21 +34,19 @@ class TunggakanSPP extends Page implements HasTable
 
     public function table(Table $table): Table
     {
+        $activeYear = AcademicYear::where('is_active', true)->first();
         $currentMonth = Carbon::now()->month;
         $currentYear = Carbon::now()->year;
-
-        // Get students who haven't paid this month
-        $paidStudentIds = Payment::whereMonth('payment_date', $currentMonth)
-            ->whereYear('payment_date', $currentYear)
-            ->distinct('student_id')
-            ->pluck('student_id');
 
         return $table
             ->query(
                 Student::query()
                     ->where('status', 'active')
-                    ->whereNotIn('id', $paidStudentIds)
-                    ->with(['class'])
+                    ->whereHas('studentClasses', function ($query) use ($activeYear) {
+                        if ($activeYear) {
+                            $query->where('academic_year_id', $activeYear->id);
+                        }
+                    })
             )
             ->columns([
                 Tables\Columns\TextColumn::make('nis')
@@ -60,71 +59,120 @@ class TunggakanSPP extends Page implements HasTable
                     ->searchable()
                     ->sortable(),
 
-                Tables\Columns\TextColumn::make('class.name')
+                Tables\Columns\TextColumn::make('current_class')
                     ->label('Kelas')
-                    ->sortable(),
+                    ->state(function (Student $record) use ($activeYear): string {
+                        if (!$activeYear)
+                            return '-';
+                        $studentClass = $record->getClassForYear($activeYear->id);
+                        return $studentClass?->classRoom->name ?? '-';
+                    })
+                    ->sortable(false),
 
-                Tables\Columns\TextColumn::make('total_months_should_pay')
-                    ->label('Harus Bayar')
-                    ->state(function (Student $record): string {
-                        // Calculate months from enrollment date to now
-                        $enrollmentDate = Carbon::parse($record->enrollment_date);
-                        $now = Carbon::now();
-                        $monthsDiff = $enrollmentDate->diffInMonths($now) + 1; // +1 to include current month
-            
-                        // Max 72 months (6 years x 12 months)
-                        $totalMonths = min($monthsDiff, 72);
-
-                        return $totalMonths . ' bulan';
+                Tables\Columns\TextColumn::make('academic_year')
+                    ->label('Tahun Ajaran')
+                    ->state(function () use ($activeYear): string {
+                        return $activeYear?->name ?? '-';
                     })
                     ->sortable(false),
 
                 Tables\Columns\TextColumn::make('total_paid')
-                    ->label('Sudah Bayar')
-                    ->state(function (Student $record): string {
+                    ->label('Sudah Lunas')
+                    ->state(function (Student $record) use ($activeYear): string {
+                        if (!$activeYear)
+                            return '0 / 12 bulan';
+
+                        $sppFeeType = FeeType::where('name', 'LIKE', '%SPP%')->first();
+
                         $paidCount = Payment::where('student_id', $record->id)
-                            ->whereHas('feeType', function ($query) {
-                                $query->where('name', 'LIKE', '%SPP%');
-                            })
+                            ->where('academic_year_id', $activeYear->id)
+                            ->where('fee_type_id', $sppFeeType?->id)
                             ->count();
 
-                        return $paidCount . ' bulan';
+                        return $paidCount . ' / 12 bulan';
                     })
+                    ->color('success')
                     ->sortable(false),
 
                 Tables\Columns\TextColumn::make('outstanding')
-                    ->label('Tunggakan')
-                    ->state(function (Student $record): string {
-                        // Calculate months from enrollment date to now
-                        $enrollmentDate = Carbon::parse($record->enrollment_date);
-                        $now = Carbon::now();
-                        $monthsDiff = $enrollmentDate->diffInMonths($now) + 1;
-                        $totalMonths = min($monthsDiff, 72);
+                    ->label('Belum Diterima')
+                    ->state(function (Student $record) use ($activeYear): string {
+                        if (!$activeYear)
+                            return '12 bulan';
 
-                        // Count paid
+                        $sppFeeType = FeeType::where('name', 'LIKE', '%SPP%')->first();
+
                         $paidCount = Payment::where('student_id', $record->id)
-                            ->whereHas('feeType', function ($query) {
-                            $query->where('name', 'LIKE', '%SPP%');
-                        })
+                            ->where('academic_year_id', $activeYear->id)
+                            ->where('fee_type_id', $sppFeeType?->id)
                             ->count();
 
-                        $outstanding = $totalMonths - $paidCount;
+                        $outstanding = 12 - $paidCount;
 
                         return $outstanding . ' bulan';
                     })
-                    ->color('danger')
+                    ->color(fn(Student $record) => $this->getOutstandingColor($record))
                     ->weight('bold')
                     ->sortable(false),
 
+                Tables\Columns\TextColumn::make('current_month_status')
+                    ->label('Bulan ' . Carbon::now()->format('F'))
+                    ->state(function (Student $record) use ($activeYear, $currentMonth, $currentYear): string {
+                        if (!$activeYear)
+                            return 'Belum Bayar';
+
+                        $sppFeeType = FeeType::where('name', 'LIKE', '%SPP%')->first();
+
+                        $paid = Payment::where('student_id', $record->id)
+                            ->where('academic_year_id', $activeYear->id)
+                            ->where('fee_type_id', $sppFeeType?->id)
+                            ->where('month', $currentMonth)
+                            ->where('year', $currentYear)
+                            ->exists();
+
+                        return $paid ? 'Lunas' : 'Belum Bayar';
+                    })
+                    ->badge()
+                    ->color(function (Student $record) use ($activeYear, $currentMonth, $currentYear): string {
+                        if (!$activeYear)
+                            return 'danger';
+
+                        $sppFeeType = FeeType::where('name', 'LIKE', '%SPP%')->first();
+
+                        $paid = Payment::where('student_id', $record->id)
+                            ->where('academic_year_id', $activeYear->id)
+                            ->where('fee_type_id', $sppFeeType?->id)
+                            ->where('month', $currentMonth)
+                            ->where('year', $currentYear)
+                            ->exists();
+
+                        return $paid ? 'success' : 'danger';
+                    }),
+
                 Tables\Columns\TextColumn::make('parent_name')
                     ->label('Nama Orang Tua')
-                    ->searchable(),
+                    ->searchable()
+                    ->toggleable(),
 
                 Tables\Columns\TextColumn::make('parent_phone')
                     ->label('No. HP Orang Tua')
-                    ->searchable(),
+                    ->searchable()
+                    ->toggleable(),
             ])
             ->filters([
+                Tables\Filters\SelectFilter::make('academic_year')
+                    ->label('Tahun Ajaran')
+                    ->options(AcademicYear::orderBy('name', 'desc')->pluck('name', 'id'))
+                    ->default(fn() => AcademicYear::where('is_active', true)->first()?->id)
+                    ->query(function ($query, $data) {
+                        if (!isset($data['value']))
+                            return $query;
+
+                        return $query->whereHas('studentClasses', function ($q) use ($data) {
+                            $q->where('academic_year_id', $data['value']);
+                        });
+                    }),
+
                 Tables\Filters\SelectFilter::make('class')
                     ->label('Kelas')
                     ->options(function () {
@@ -151,9 +199,56 @@ class TunggakanSPP extends Page implements HasTable
                                 ->where('academic_year_id', $activeYear->id);
                         });
                     }),
+
+                Tables\Filters\SelectFilter::make('payment_status')
+                    ->label('Status Pembayaran Bulan Ini')
+                    ->options([
+                        'paid' => 'Sudah Bayar',
+                        'unpaid' => 'Belum Bayar',
+                    ])
+                    ->query(function ($query, $data) use ($activeYear, $currentMonth, $currentYear) {
+                        if (!isset($data['value']) || !$activeYear)
+                            return $query;
+
+                        $sppFeeType = FeeType::where('name', 'LIKE', '%SPP%')->first();
+
+                        $paidStudentIds = Payment::where('academic_year_id', $activeYear->id)
+                            ->where('fee_type_id', $sppFeeType?->id)
+                            ->where('month', $currentMonth)
+                            ->where('year', $currentYear)
+                            ->pluck('student_id');
+
+                        if ($data['value'] === 'paid') {
+                            return $query->whereIn('id', $paidStudentIds);
+                        } else {
+                            return $query->whereNotIn('id', $paidStudentIds);
+                        }
+                    }),
             ])
-            ->heading('Siswa yang Belum Bayar SPP Bulan ' . Carbon::now()->format('F Y'))
-            ->description('Daftar siswa aktif yang belum melakukan pembayaran SPP bulan ini')
-            ->defaultSort('class.name');
+            ->heading('Laporan Tunggakan SPP - ' . ($activeYear?->name ?? 'Tahun Ajaran Aktif'))
+            ->description('Daftar pembayaran SPP siswa aktif untuk tahun ajaran ' . ($activeYear?->name ?? '-'))
+            ->defaultSort('name');
+    }
+
+    protected function getOutstandingColor(Student $record): string
+    {
+        $activeYear = AcademicYear::where('is_active', true)->first();
+        if (!$activeYear)
+            return 'danger';
+
+        $sppFeeType = FeeType::where('name', 'LIKE', '%SPP%')->first();
+
+        $paidCount = Payment::where('student_id', $record->id)
+            ->where('academic_year_id', $activeYear->id)
+            ->where('fee_type_id', $sppFeeType?->id)
+            ->count();
+
+        $outstanding = 12 - $paidCount;
+
+        if ($outstanding == 0)
+            return 'success';
+        if ($outstanding <= 2)
+            return 'warning';
+        return 'danger';
     }
 }
