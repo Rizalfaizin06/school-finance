@@ -22,6 +22,7 @@ use App\Models\Payment;
 use App\Models\FeeType;
 use App\Models\Account;
 use App\Models\AcademicYear;
+use App\Models\SppRate;
 use Carbon\Carbon;
 use Illuminate\Support\HtmlString;
 use UnitEnum;
@@ -44,14 +45,19 @@ class PembayaranSPP extends Page implements HasForms
     protected static ?int $navigationSort = 1;
 
     public ?array $data = [];
+    public $academicYearId = null;
     public $studentId = null;
     public $studentInfo = null;
-    public $unpaidMonths = [];  // Tunggakan (enrollment - now)
-    public $availableMonths = []; // Semua bulan yang bisa dibayar (enrollment - 6 tahun)
-    public $paymentHistory = [];
+    public $monthsData = []; // 12 bulan dengan status
 
     public function mount(): void
     {
+        // Set default academic year to active one
+        $activeYear = AcademicYear::where('is_active', true)->first();
+        if ($activeYear) {
+            $this->academicYearId = $activeYear->id;
+        }
+        
         $this->form->fill();
     }
 
@@ -59,21 +65,37 @@ class PembayaranSPP extends Page implements HasForms
     {
         return $schema
             ->components([
-                Section::make('Pilih Siswa')
+                Section::make('Filter')
                     ->components([
-                        Select::make('student_id')
-                            ->label('Siswa')
-                            ->options(Student::where('status', 'active')->get()->pluck('name', 'id'))
-                            ->searchable()
-                            ->required()
-                            ->live()
-                            ->afterStateUpdated(function ($state) {
-                                $this->studentId = $state;
-                                $this->loadStudentInfo();
-                            }),
+                        Grid::make(2)
+                            ->components([
+                                Select::make('academic_year_id')
+                                    ->label('Tahun Ajaran')
+                                    ->options(AcademicYear::all()->pluck('name', 'id'))
+                                    ->required()
+                                    ->native(false)
+                                    ->live()
+                                    ->afterStateUpdated(function ($state) {
+                                        $this->academicYearId = $state;
+                                        if ($this->studentId) {
+                                            $this->loadStudentData();
+                                        }
+                                    }),
+
+                                Select::make('student_id')
+                                    ->label('Siswa')
+                                    ->options(Student::where('status', 'active')->get()->pluck('name', 'id'))
+                                    ->searchable()
+                                    ->required()
+                                    ->live()
+                                    ->afterStateUpdated(function ($state) {
+                                        $this->studentId = $state;
+                                        $this->loadStudentData();
+                                    }),
+                            ]),
                     ]),
 
-                Section::make('Informasi Tunggakan')
+                Section::make('Informasi Siswa')
                     ->components([
                         Placeholder::make('info')
                             ->label('')
@@ -81,208 +103,103 @@ class PembayaranSPP extends Page implements HasForms
                     ])
                     ->visible(fn() => $this->studentId !== null),
 
-                Section::make('Form Pembayaran')
+                Section::make('Status Pembayaran SPP')
+                    ->description('12 Bulan dalam Tahun Ajaran')
                     ->components([
-                        Grid::make(2)
-                            ->components([
-                                Select::make('account_id')
-                                    ->label('Akun Pembayaran')
-                                    ->options(Account::all()->pluck('name', 'id'))
-                                    ->required()
-                                    ->native(false),
-
-                                Select::make('payment_method')
-                                    ->label('Metode Pembayaran')
-                                    ->options([
-                                        'cash' => 'Tunai',
-                                        'transfer' => 'Transfer',
-                                        'check' => 'Cek',
-                                    ])
-                                    ->default('cash')
-                                    ->required()
-                                    ->native(false),
-
-                                DatePicker::make('payment_date')
-                                    ->label('Tanggal Pembayaran')
-                                    ->default(now())
-                                    ->required()
-                                    ->native(false),
-
-                                TextInput::make('months_to_pay')
-                                    ->label('Jumlah Bulan Dibayar')
-                                    ->numeric()
-                                    ->minValue(1)
-                                    ->maxValue(fn() => count($this->availableMonths))
-                                    ->default(1)
-                                    ->required()
-                                    ->suffix('bulan')
-                                    ->helperText(fn() => $this->getPaymentHelperText()),
-
-                                TextInput::make('amount_per_month')
-                                    ->label('Nominal per Bulan')
-                                    ->numeric()
-                                    ->default(150000)
-                                    ->required()
-                                    ->prefix('Rp')
-                                    ->live()
-                                    ->afterStateUpdated(function ($state, Set $set, Get $get) {
-                                        $months = $get('months_to_pay') ?? 1;
-                                        $set('total_amount', $state * $months);
-                                    }),
-
-                                TextInput::make('total_amount')
-                                    ->label('Total Pembayaran')
-                                    ->numeric()
-                                    ->disabled()
-                                    ->prefix('Rp')
-                                    ->dehydrated(false),
-
-                                Textarea::make('notes')
-                                    ->label('Catatan')
-                                    ->rows(2)
-                                    ->columnSpanFull(),
-                            ]),
-                    ])
-                    ->visible(fn() => $this->studentId !== null && count($this->availableMonths) > 0)
-                    ->footerActions([
-                        \Filament\Actions\Action::make('submit')
-                            ->label('Simpan Pembayaran')
-                            ->color('primary')
-                            ->size('lg')
-                            ->submit('submit'),
-                    ]),
-
-                Section::make('Daftar Pembayaran per Bulan')
-                    ->description('Status pembayaran SPP per bulan')
-                    ->components([
-                        Placeholder::make('payment_list')
+                        Placeholder::make('months_status')
                             ->label('')
-                            ->content(fn() => $this->getPaymentListHtml()),
+                            ->content(fn() => $this->getMonthsStatusHtml()),
                     ])
                     ->visible(fn() => $this->studentId !== null),
             ])
             ->statePath('data');
     }
 
-    protected function loadStudentInfo()
+    protected function loadStudentData()
     {
-        if (!$this->studentId) {
+        if (!$this->studentId || !$this->academicYearId) {
             $this->studentInfo = null;
-            $this->unpaidMonths = [];
-            $this->availableMonths = [];
+            $this->monthsData = [];
             return;
         }
 
         $student = Student::with('class')->find($this->studentId);
-        if (!$student) {
+        $academicYear = AcademicYear::find($this->academicYearId);
+        
+        if (!$student || !$academicYear) {
             return;
         }
 
-        $enrollmentDate = Carbon::parse($student->enrollment_date);
-        $now = Carbon::now();
-        $endDate = $enrollmentDate->copy()->addYears(6); // SD = 6 tahun
+        // Get SPP rate for this academic year
+        $sppRate = SppRate::where('academic_year_id', $academicYear->id)->first();
+        
+        // Generate 12 months based on academic year
+        $this->monthsData = $this->generate12Months($academicYear, $student);
 
-        // Calculate months from enrollment to NOW (untuk tunggakan)
-        $monthsUntilNow = [];
-        $current = $enrollmentDate->copy();
-        while ($current->lte($now)) {
-            $monthsUntilNow[] = [
-                'year' => $current->year,
-                'month' => $current->month,
-                'month_name' => $current->format('F Y'),
-            ];
-            $current->addMonth();
-        }
-
-        // Calculate ALL months from enrollment to 6 years (untuk available payment)
-        $allMonthsUntil6Years = [];
-        $current = $enrollmentDate->copy();
-        while ($current->lte($endDate)) {
-            $allMonthsUntil6Years[] = [
-                'year' => $current->year,
-                'month' => $current->month,
-                'month_name' => $current->format('F Y'),
-            ];
-            $current->addMonth();
-        }
-
-        // Get paid months with payment details
-        $payments = Payment::where('student_id', $student->id)
-            ->whereHas('feeType', function ($query) {
-                $query->where('name', 'LIKE', '%SPP%');
-            })
-            ->get();
-
-        $paidMonths = $payments->map(function ($payment) {
-            return $payment->year . '-' . str_pad($payment->month, 2, '0', STR_PAD_LEFT);
-        })->toArray();
-
-        // Build payment history with all months (sampai 6 tahun)
-        $this->paymentHistory = collect($allMonthsUntil6Years)->map(function ($month) use ($payments, $now) {
-            $key = $month['year'] . '-' . str_pad($month['month'], 2, '0', STR_PAD_LEFT);
-            $payment = $payments->first(function ($p) use ($month) {
-                return $p->year == $month['year'] && $p->month == $month['month'];
-            });
-
-            $monthDate = Carbon::create($month['year'], $month['month'], 1);
-            $isFuture = $monthDate->isAfter($now);
-
-            $monthNameIndo = [
-                1 => 'Januari',
-                2 => 'Februari',
-                3 => 'Maret',
-                4 => 'April',
-                5 => 'Mei',
-                6 => 'Juni',
-                7 => 'Juli',
-                8 => 'Agustus',
-                9 => 'September',
-                10 => 'Oktober',
-                11 => 'November',
-                12 => 'Desember'
-            ];
-
-            return [
-                'month_year' => $monthNameIndo[$month['month']] . ' ' . $month['year'],
-                'status' => $payment ? 'Sudah Bayar' : ($isFuture ? 'Opsional' : 'Tunggakan'),
-                'receipt_number' => $payment ? $payment->receipt_number : '-',
-                'amount' => $payment ? $payment->amount : null,
-                'payment_date' => $payment ? Carbon::parse($payment->payment_date)->format('d/m/Y') : null,
-                'is_paid' => $payment !== null,
-                'is_future' => $isFuture,
-            ];
-        })->toArray();
-
-        // Filter TUNGGAKAN (unpaid months until NOW only)
-        $this->unpaidMonths = collect($monthsUntilNow)->filter(function ($month) use ($paidMonths) {
-            $key = $month['year'] . '-' . str_pad($month['month'], 2, '0', STR_PAD_LEFT);
-            return !in_array($key, $paidMonths);
-        })->values()->toArray();
-
-        // Filter AVAILABLE months (unpaid until 6 years - untuk form payment)
-        $this->availableMonths = collect($allMonthsUntil6Years)->filter(function ($month) use ($paidMonths) {
-            $key = $month['year'] . '-' . str_pad($month['month'], 2, '0', STR_PAD_LEFT);
-            return !in_array($key, $paidMonths);
-        })->values()->toArray();
+        // Count paid and unpaid
+        $paidCount = collect($this->monthsData)->where('is_paid', true)->count();
+        $unpaidCount = 12 - $paidCount;
 
         $this->studentInfo = [
             'student' => $student,
-            'total_months_should_pay' => count($monthsUntilNow), // Sampai sekarang
-            'total_paid' => $payments->count(), // Langsung dari database (include advance payment)
-            'total_unpaid' => count($this->unpaidMonths), // Tunggakan
-            'total_optional' => count($this->availableMonths) - count($this->unpaidMonths), // Opsional (future)
-            'total_can_pay' => count($this->availableMonths), // Total bisa bayar (sampai 6 tahun)
-            'unpaid_months' => $this->unpaidMonths,
-            'end_date' => $endDate->format('d M Y'),
+            'academic_year' => $academicYear,
+            'spp_rate' => $sppRate,
+            'total_paid' => $paidCount,
+            'total_unpaid' => $unpaidCount,
         ];
     }
 
-    protected function getPaymentHelperText(): string
+    protected function generate12Months($academicYear, $student)
     {
-        $tunggakan = count($this->unpaidMonths);
-        $opsional = count($this->availableMonths) - $tunggakan;
-
-        return "Tunggakan: {$tunggakan} bulan, Opsional: {$opsional} bulan. Max: " . count($this->availableMonths) . " bulan";
+        $months = [];
+        $startMonth = $academicYear->start_month; // 7 (Juli)
+        $endMonth = $academicYear->end_month; // 6 (Juni)
+        
+        $currentMonth = $startMonth;
+        $currentYear = (int) explode('/', $academicYear->name)[0]; // 2025 dari "2025/2026"
+        
+        $monthNames = [
+            1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April',
+            5 => 'Mei', 6 => 'Juni', 7 => 'Juli', 8 => 'Agustus',
+            9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember'
+        ];
+        
+        // Get paid months for this student & academic year
+        $sppFeeType = FeeType::where('name', 'LIKE', '%SPP%')->first();
+        $payments = Payment::where('student_id', $student->id)
+            ->where('academic_year_id', $academicYear->id)
+            ->where('fee_type_id', $sppFeeType?->id)
+            ->get();
+        
+        for ($i = 0; $i < 12; $i++) {
+            $year = $currentYear;
+            
+            // If month wraps around (e.g., Juli 2025 -> Juni 2026)
+            if ($currentMonth > 12) {
+                $currentMonth = 1;
+                $year++;
+            }
+            
+            // Check if this month is paid
+            $payment = $payments->first(function ($p) use ($currentMonth, $year) {
+                return $p->month == $currentMonth && $p->year == $year;
+            });
+            
+            $months[] = [
+                'month' => $currentMonth,
+                'year' => $year,
+                'month_name' => $monthNames[$currentMonth] . ' ' . $year,
+                'is_paid' => $payment !== null,
+                'payment' => $payment,
+                'receipt_number' => $payment?->receipt_number ?? '-',
+                'payment_date' => $payment ? Carbon::parse($payment->payment_date)->format('d/m/Y') : null,
+                'amount' => $payment?->amount,
+            ];
+            
+            $currentMonth++;
+        }
+        
+        return $months;
     }
 
     protected function getStudentInfoHtml(): HtmlString
@@ -293,48 +210,34 @@ class PembayaranSPP extends Page implements HasForms
 
         $info = $this->studentInfo;
         $student = $info['student'];
+        $academicYear = $info['academic_year'];
+        $sppRate = $info['spp_rate'];
 
         $html = '<div style="display: flex; flex-direction: column; gap: 0.75rem;">';
-        $html .= '<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">';
+        $html .= '<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem;">';
         $html .= '<div><strong style="font-size: 0.75rem; color: #6b7280;">NIS:</strong> <span style="font-weight: 500;">' . $student->nis . '</span></div>';
+        $html .= '<div><strong style="font-size: 0.75rem; color: #6b7280;">Nama:</strong> <span style="font-weight: 500;">' . $student->name . '</span></div>';
         $html .= '<div><strong style="font-size: 0.75rem; color: #6b7280;">Kelas:</strong> <span style="font-weight: 500;">' . ($student->class->name ?? '-') . '</span></div>';
-        $html .= '<div><strong style="font-size: 0.75rem; color: #6b7280;">Tanggal Masuk:</strong> <span style="font-weight: 500;">' . Carbon::parse($student->enrollment_date)->format('d M Y') . '</span></div>';
+        $html .= '<div><strong style="font-size: 0.75rem; color: #6b7280;">Tahun Ajaran:</strong> <span style="font-weight: 500;">' . $academicYear->name . '</span></div>';
         $html .= '</div>';
 
-        $html .= '<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-top: 0.5rem;">';
-        $html .= '<div style="padding: 0.75rem; background-color: #eff6ff; border-radius: 0.5rem; border: 1px solid #bfdbfe;"><strong style="font-size: 0.75rem; color: #1e40af;">Harus Bayar (s/d sekarang):</strong> <span style="font-weight: 700; display: block; margin-top: 0.25rem; font-size: 1.125rem; color: #1e3a8a;">' . $info['total_months_should_pay'] . ' bulan</span></div>';
-        $html .= '<div style="padding: 0.75rem; background-color: #f0fdf4; border-radius: 0.5rem; border: 1px solid #bbf7d0;"><strong style="font-size: 0.75rem; color: #15803d;">Sudah Bayar:</strong> <span style="font-weight: 700; display: block; margin-top: 0.25rem; font-size: 1.125rem; color: #166534;">' . $info['total_paid'] . ' bulan</span></div>';
-        $html .= '<div style="padding: 0.75rem; background-color: #fef2f2; border-radius: 0.5rem; border: 1px solid #fecaca;"><strong style="font-size: 0.75rem; color: #b91c1c;">Tunggakan:</strong> <span style="font-weight: 700; display: block; margin-top: 0.25rem; font-size: 1.125rem; color: #dc2626;">' . $info['total_unpaid'] . ' bulan</span></div>';
-        $html .= '<div style="padding: 0.75rem; background-color: #f3e8ff; border-radius: 0.5rem; border: 1px solid #d8b4fe;"><strong style="font-size: 0.75rem; color: #6b21a8;">Opsional (s/d lulus):</strong> <span style="font-weight: 700; display: block; margin-top: 0.25rem; font-size: 1.125rem; color: #7c3aed;">' . $info['total_optional'] . ' bulan</span></div>';
+        $html .= '<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 0.5rem;">';
+        $html .= '<div style="padding: 0.75rem; background-color: #eff6ff; border-radius: 0.5rem; border: 1px solid #bfdbfe;"><strong style="font-size: 0.75rem; color: #1e40af;">Tarif SPP/Bulan:</strong> <span style="font-weight: 700; display: block; margin-top: 0.25rem; font-size: 1.125rem; color: #1e3a8a;">Rp ' . number_format($sppRate?->amount ?? 0, 0, ',', '.') . '</span></div>';
+        $html .= '<div style="padding: 0.75rem; background-color: #f0fdf4; border-radius: 0.5rem; border: 1px solid #bbf7d0;"><strong style="font-size: 0.75rem; color: #15803d;">Sudah Bayar:</strong> <span style="font-weight: 700; display: block; margin-top: 0.25rem; font-size: 1.125rem; color: #166534;">' . $info['total_paid'] . ' / 12 bulan</span></div>';
+        $html .= '<div style="padding: 0.75rem; background-color: #fef2f2; border-radius: 0.5rem; border: 1px solid #fecaca;"><strong style="font-size: 0.75rem; color: #b91c1c;">Belum Bayar:</strong> <span style="font-weight: 700; display: block; margin-top: 0.25rem; font-size: 1.125rem; color: #dc2626;">' . $info['total_unpaid'] . ' bulan</span></div>';
         $html .= '</div>';
-
-        $html .= '<div style="margin-top: 0.5rem; padding: 0.75rem; background-color: #e0f2fe; border-radius: 0.5rem; border: 1px solid #bae6fd;">';
-        $html .= '<strong style="font-size: 0.75rem; color: #075985;">Masa SD (6 Tahun):</strong> <span style="font-weight: 500; font-size: 0.875rem; color: #0c4a6e;">s/d ' . $info['end_date'] . ' • Total dapat dibayar: ' . $info['total_can_pay'] . ' bulan (72 bulan)</span>';
-        $html .= '</div>';
-
-        if (count($this->unpaidMonths) > 0) {
-            $html .= '<div style="margin-top: 0.5rem; padding: 0.75rem; background-color: #fef3c7; border-radius: 0.5rem; border: 1px solid #fde68a;">';
-            $html .= '<strong style="font-size: 0.75rem; color: #92400e;">Bulan yang belum dibayar (dari terlama):</strong><br>';
-            $html .= '<div style="font-size: 0.875rem; margin-top: 0.5rem; color: #451a03;">';
-            $firstFive = array_slice($this->unpaidMonths, 0, 5);
-            $monthNames = array_map(fn($m) => $m['month_name'], $firstFive);
-            $html .= implode(', ', $monthNames);
-            if (count($this->unpaidMonths) > 5) {
-                $html .= ', ... <strong>(' . (count($this->unpaidMonths) - 5) . ' bulan lagi)</strong>';
-            }
-            $html .= '</div></div>';
-        }
-
         $html .= '</div>';
 
         return new HtmlString($html);
     }
 
-    protected function getPaymentListHtml(): HtmlString
+    protected function getMonthsStatusHtml(): HtmlString
     {
-        if (empty($this->paymentHistory)) {
-            return new HtmlString('<p style="font-size: 0.875rem; color: #6b7280;">Tidak ada data pembayaran</p>');
+        if (empty($this->monthsData)) {
+            return new HtmlString('<p style="font-size: 0.875rem; color: #6b7280;">Pilih siswa untuk melihat status pembayaran</p>');
         }
+
+        $sppRate = $this->studentInfo['spp_rate'];
 
         $html = '<div style="overflow-x: auto; border-radius: 0.5rem; border: 1px solid #e5e7eb;">';
         $html .= '<table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">';
@@ -342,35 +245,40 @@ class PembayaranSPP extends Page implements HasForms
         $html .= '<tr>';
         $html .= '<th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600; border-bottom: 1px solid #e5e7eb;">No</th>';
         $html .= '<th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600; border-bottom: 1px solid #e5e7eb;">Bulan</th>';
-        $html .= '<th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600; border-bottom: 1px solid #e5e7eb;">Status</th>';
+        $html .= '<th style="padding: 0.75rem 1rem; text-align: center; font-weight: 600; border-bottom: 1px solid #e5e7eb;">Status</th>';
         $html .= '<th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600; border-bottom: 1px solid #e5e7eb;">Tanggal Bayar</th>';
         $html .= '<th style="padding: 0.75rem 1rem; text-align: right; font-weight: 600; border-bottom: 1px solid #e5e7eb;">Nominal</th>';
         $html .= '<th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600; border-bottom: 1px solid #e5e7eb;">No. Struk</th>';
+        $html .= '<th style="padding: 0.75rem 1rem; text-align: center; font-weight: 600; border-bottom: 1px solid #e5e7eb;">Aksi</th>';
         $html .= '</tr>';
         $html .= '</thead>';
         $html .= '<tbody>';
 
-        foreach ($this->paymentHistory as $index => $payment) {
-            if ($payment['is_paid']) {
-                $rowBg = 'background-color: #f0fdf4;';
-                $statusBadge = '<span style="display: inline-flex; align-items: center; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; background-color: #dcfce7; color: #166534;">✓ Sudah Bayar</span>';
-            } elseif ($payment['is_future']) {
-                $rowBg = 'background-color: #faf5ff;';
-                $statusBadge = '<span style="display: inline-flex; align-items: center; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; background-color: #e9d5ff; color: #6b21a8;">◆ Opsional</span>';
-            } else {
-                $rowBg = 'background-color: #fef2f2;';
-                $statusBadge = '<span style="display: inline-flex; align-items: center; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; background-color: #fee2e2; color: #991b1b;">✗ Tunggakan</span>';
-            }
+        foreach ($this->monthsData as $index => $month) {
+            $rowBg = $month['is_paid'] ? 'background-color: #f0fdf4;' : 'background-color: #fef2f2;';
+            $statusBadge = $month['is_paid']
+                ? '<span style="display: inline-flex; align-items: center; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; background-color: #dcfce7; color: #166534;">✓ Lunas</span>'
+                : '<span style="display: inline-flex; align-items: center; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; background-color: #fee2e2; color: #991b1b;">✗ Belum Bayar</span>';
 
-            $borderBottom = ($index < count($this->paymentHistory) - 1) ? 'border-bottom: 1px solid #e5e7eb;' : '';
+            $borderBottom = ($index < count($this->monthsData) - 1) ? 'border-bottom: 1px solid #e5e7eb;' : '';
 
             $html .= '<tr style="' . $rowBg . ' ' . $borderBottom . '">';
             $html .= '<td style="padding: 0.75rem 1rem;">' . ($index + 1) . '</td>';
-            $html .= '<td style="padding: 0.75rem 1rem; font-weight: 500;">' . $payment['month_year'] . '</td>';
-            $html .= '<td style="padding: 0.75rem 1rem;">' . $statusBadge . '</td>';
-            $html .= '<td style="padding: 0.75rem 1rem;">' . ($payment['payment_date'] ?? '-') . '</td>';
-            $html .= '<td style="padding: 0.75rem 1rem; text-align: right; font-weight: 500;">' . ($payment['amount'] ? 'Rp ' . number_format($payment['amount'], 0, ',', '.') : '-') . '</td>';
-            $html .= '<td style="padding: 0.75rem 1rem; font-family: monospace; font-size: 0.75rem; color: #6b7280;">' . $payment['receipt_number'] . '</td>';
+            $html .= '<td style="padding: 0.75rem 1rem; font-weight: 500;">' . $month['month_name'] . '</td>';
+            $html .= '<td style="padding: 0.75rem 1rem; text-align: center;">' . $statusBadge . '</td>';
+            $html .= '<td style="padding: 0.75rem 1rem;">' . ($month['payment_date'] ?? '-') . '</td>';
+            $html .= '<td style="padding: 0.75rem 1rem; text-align: right; font-weight: 500;">' . ($month['amount'] ? 'Rp ' . number_format($month['amount'], 0, ',', '.') : '-') . '</td>';
+            $html .= '<td style="padding: 0.75rem 1rem; font-family: monospace; font-size: 0.75rem; color: #6b7280;">' . $month['receipt_number'] . '</td>';
+            
+            // Action button
+            if (!$month['is_paid']) {
+                $html .= '<td style="padding: 0.75rem 1rem; text-align: center;">';
+                $html .= '<button wire:click="payMonth(' . $month['month'] . ', ' . $month['year'] . ')" type="button" style="padding: 0.375rem 0.75rem; background-color: #3b82f6; color: white; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 500; cursor: pointer; border: none;">Bayar</button>';
+                $html .= '</td>';
+            } else {
+                $html .= '<td style="padding: 0.75rem 1rem; text-align: center; color: #9ca3af;">-</td>';
+            }
+            
             $html .= '</tr>';
         }
 
@@ -381,71 +289,75 @@ class PembayaranSPP extends Page implements HasForms
         return new HtmlString($html);
     }
 
-    public function submit(): void
+    public function payMonth($month, $year)
     {
-        $data = $this->form->getState();
-
-        if (!$this->studentId || count($this->availableMonths) === 0) {
+        if (!$this->studentId || !$this->academicYearId) {
             Notification::make()
                 ->title('Error')
-                ->body('Tidak ada bulan yang bisa dibayar untuk siswa ini')
+                ->body('Pilih siswa dan tahun ajaran terlebih dahulu')
                 ->danger()
                 ->send();
             return;
         }
 
         try {
-            // Get SPP fee type
+            $student = Student::find($this->studentId);
+            $academicYear = AcademicYear::find($this->academicYearId);
+            $sppRate = SppRate::where('academic_year_id', $academicYear->id)->first();
             $sppFeeType = FeeType::where('name', 'LIKE', '%SPP%')->first();
+            $defaultAccount = Account::first(); // Atau bisa pilih account
+
+            if (!$sppRate) {
+                throw new \Exception('Tarif SPP untuk tahun ajaran ' . $academicYear->name . ' belum diset');
+            }
+
             if (!$sppFeeType) {
                 throw new \Exception('Fee Type SPP tidak ditemukan');
             }
 
-            // Get active academic year
-            $academicYear = AcademicYear::where('is_active', true)->first();
-            if (!$academicYear) {
-                $academicYear = AcademicYear::first();
+            // Check if already paid
+            $existing = Payment::where('student_id', $this->studentId)
+                ->where('academic_year_id', $this->academicYearId)
+                ->where('fee_type_id', $sppFeeType->id)
+                ->where('month', $month)
+                ->where('year', $year)
+                ->first();
+
+            if ($existing) {
+                Notification::make()
+                    ->title('Info')
+                    ->body('Bulan ini sudah dibayar')
+                    ->warning()
+                    ->send();
+                return;
             }
 
-            $monthsToPay = (int) $data['months_to_pay'];
-            $amountPerMonth = (float) $data['amount_per_month'];
-
-            // Create payments for the oldest available months (FIFO)
-            // Ini bisa include tunggakan + opsional
-            $monthsToProcess = array_slice($this->availableMonths, 0, $monthsToPay);
-
-            foreach ($monthsToProcess as $month) {
-                Payment::create([
-                    'student_id' => $this->studentId,
-                    'fee_type_id' => $sppFeeType->id,
-                    'account_id' => $data['account_id'],
-                    'academic_year_id' => $academicYear->id,
-                    'payment_date' => $data['payment_date'],
-                    'month' => $month['month'],
-                    'year' => $month['year'],
-                    'amount' => $amountPerMonth,
-                    'payment_method' => $data['payment_method'],
-                    'notes' => $data['notes'] ?? null,
-                    'created_by' => auth()->id(),
-                ]);
-            }
+            // Create payment
+            $receiptNumber = 'SPP/' . now()->format('Ymd') . '/' . str_pad(Payment::count() + 1, 4, '0', STR_PAD_LEFT);
+            
+            Payment::create([
+                'receipt_number' => $receiptNumber,
+                'student_id' => $this->studentId,
+                'fee_type_id' => $sppFeeType->id,
+                'academic_year_id' => $this->academicYearId,
+                'account_id' => $defaultAccount->id,
+                'payment_date' => now(),
+                'month' => $month,
+                'year' => $year,
+                'amount' => $sppRate->amount,
+                'payment_method' => 'cash',
+                'notes' => 'Pembayaran SPP ' . $this->getMonthName($month) . ' ' . $year,
+                'created_by' => auth()->id(),
+            ]);
 
             Notification::make()
                 ->title('Berhasil')
-                ->body('Pembayaran SPP sebanyak ' . $monthsToPay . ' bulan berhasil disimpan')
+                ->body('Pembayaran SPP ' . $this->getMonthName($month) . ' ' . $year . ' berhasil')
                 ->success()
                 ->send();
 
-            // Reload student info to refresh payment list
-            $this->loadStudentInfo();
-
-            // Reset only the form payment data, KEEP student_id
-            $this->data['months_to_pay'] = 1;
-            $this->data['account_id'] = null;
-            $this->data['payment_method'] = 'cash';
-            $this->data['payment_date'] = now();
-            $this->data['amount_per_month'] = 150000;
-            $this->data['notes'] = null;
+            // Reload data
+            $this->loadStudentData();
 
         } catch (\Exception $e) {
             Notification::make()
@@ -454,5 +366,15 @@ class PembayaranSPP extends Page implements HasForms
                 ->danger()
                 ->send();
         }
+    }
+
+    protected function getMonthName($month)
+    {
+        $months = [
+            1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April',
+            5 => 'Mei', 6 => 'Juni', 7 => 'Juli', 8 => 'Agustus',
+            9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember'
+        ];
+        return $months[$month];
     }
 }
