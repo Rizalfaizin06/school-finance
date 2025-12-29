@@ -20,9 +20,9 @@ use Filament\Actions\Action;
 use App\Models\Student;
 use App\Models\Payment;
 use App\Models\FeeType;
+use App\Models\FeeRate;
 use App\Models\Account;
 use App\Models\AcademicYear;
-use App\Models\SppRate;
 use Carbon\Carbon;
 use Illuminate\Support\HtmlString;
 use UnitEnum;
@@ -149,7 +149,11 @@ class PembayaranSPP extends Page implements HasForms
         }
 
         // Get SPP rate for this academic year
-        $sppRate = SppRate::where('academic_year_id', $academicYear->id)->first();
+        $sppFeeType = FeeType::where('name', 'LIKE', '%SPP%')->first();
+        $sppRate = FeeRate::where('fee_type_id', $sppFeeType->id)
+            ->where('academic_year_id', $academicYear->id)
+            ->where('is_active', true)
+            ->first();
 
         // Generate 12 months based on academic year
         $this->monthsData = $this->generate12Months($academicYear, $student);
@@ -297,7 +301,7 @@ class PembayaranSPP extends Page implements HasForms
             $html .= '<td style="padding: 0.75rem 1rem; font-weight: 500;">' . $month['month_name'] . '</td>';
             $html .= '<td style="padding: 0.75rem 1rem; text-align: center;">' . $statusBadge . '</td>';
             $html .= '<td style="padding: 0.75rem 1rem;">' . ($month['payment_date'] ?? '-') . '</td>';
-            $html .= '<td style="padding: 0.75rem 1rem; text-align: right; font-weight: 500;">' . ($month['amount'] ? 'Rp ' . number_format($month['amount'], 0, ',', '.') : '-') . '</td>';
+            $html .= '<td style="padding: 0.75rem 1rem; text-align: right; font-weight: 500;">' . ($month['amount'] ? 'Rp ' . number_format((float) $month['amount'], 0, ',', '.') : '-') . '</td>';
             $html .= '<td style="padding: 0.75rem 1rem; font-family: monospace; font-size: 0.75rem; color: #6b7280;">' . $month['receipt_number'] . '</td>';
 
             // Action button
@@ -333,12 +337,15 @@ class PembayaranSPP extends Page implements HasForms
         try {
             $student = Student::find($this->studentId);
             $academicYear = AcademicYear::find($this->academicYearId);
-            $sppRate = SppRate::where('academic_year_id', $academicYear->id)->first();
             $sppFeeType = FeeType::where('name', 'LIKE', '%SPP%')->first();
+            $sppRate = FeeRate::where('fee_type_id', $sppFeeType->id)
+                ->where('academic_year_id', $academicYear->id)
+                ->where('is_active', true)
+                ->first();
             $defaultAccount = Account::first(); // Atau bisa pilih account
 
             if (!$sppRate) {
-                throw new \Exception('Tarif SPP untuk tahun ajaran ' . $academicYear->name . ' belum diset');
+                throw new \Exception('Tarif SPP untuk tahun ajaran ' . $academicYear->name . ' belum diset di Setting Pemasukan');
             }
 
             if (!$sppFeeType) {
