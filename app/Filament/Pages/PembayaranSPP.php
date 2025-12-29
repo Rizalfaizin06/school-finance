@@ -16,6 +16,7 @@ use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Set;
 use Filament\Forms\Get;
 use Filament\Notifications\Notification;
+use Filament\Actions\Action;
 use App\Models\Student;
 use App\Models\Payment;
 use App\Models\FeeType;
@@ -77,15 +78,6 @@ class PembayaranSPP extends Page implements HasForms
                         Placeholder::make('info')
                             ->label('')
                             ->content(fn() => $this->getStudentInfoHtml()),
-                    ])
-                    ->visible(fn() => $this->studentId !== null),
-
-                Section::make('Daftar Pembayaran per Bulan')
-                    ->description('Status pembayaran SPP per bulan')
-                    ->components([
-                        Placeholder::make('payment_list')
-                            ->label('')
-                            ->content(fn() => $this->getPaymentListHtml()),
                     ])
                     ->visible(fn() => $this->studentId !== null),
 
@@ -151,7 +143,23 @@ class PembayaranSPP extends Page implements HasForms
                                     ->columnSpanFull(),
                             ]),
                     ])
-                    ->visible(fn() => $this->studentId !== null && count($this->availableMonths) > 0),
+                    ->visible(fn() => $this->studentId !== null && count($this->availableMonths) > 0)
+                    ->footerActions([
+                        \Filament\Actions\Action::make('submit')
+                            ->label('Simpan Pembayaran')
+                            ->color('primary')
+                            ->size('lg')
+                            ->submit('submit'),
+                    ]),
+
+                Section::make('Daftar Pembayaran per Bulan')
+                    ->description('Status pembayaran SPP per bulan')
+                    ->components([
+                        Placeholder::make('payment_list')
+                            ->label('')
+                            ->content(fn() => $this->getPaymentListHtml()),
+                    ])
+                    ->visible(fn() => $this->studentId !== null),
             ])
             ->statePath('data');
     }
@@ -431,8 +439,7 @@ class PembayaranSPP extends Page implements HasForms
             // Reload student info to refresh payment list
             $this->loadStudentInfo();
 
-            // Reset only the form data
-            $this->form->fill([]);
+            // Reset only the form payment data, KEEP student_id
             $this->data['months_to_pay'] = 1;
             $this->data['account_id'] = null;
             $this->data['payment_method'] = 'cash';
