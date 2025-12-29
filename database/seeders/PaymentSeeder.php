@@ -14,10 +14,13 @@ class PaymentSeeder extends Seeder
 {
     /**
      * Run the database seeds.
+     * 
+     * Seeder ini membuat data pembayaran SPP dengan prinsip FIFO (First In First Out)
+     * Setiap siswa bayar dari bulan enrollment mereka, berurutan dari yang terlama
      */
     public function run(): void
     {
-        $this->command->info('Seeding payment transactions...');
+        $this->command->info('Seeding payment transactions with FIFO logic...');
 
         $students = Student::all();
         $feeTypes = FeeType::all();
@@ -36,35 +39,74 @@ class PaymentSeeder extends Seeder
         $sppFeeType = $feeTypes->where('name', 'SPP')->first();
 
         if ($sppFeeType) {
-            // For each of last 6 months
-            for ($monthsAgo = 5; $monthsAgo >= 0; $monthsAgo--) {
-                $paymentDate = Carbon::now()->subMonths($monthsAgo);
+            $this->command->info('Creating SPP payments with FIFO logic...');
 
-                // 70-90% students pay SPP each month
-                $payingStudents = $students->random(min(rand(70, 90), $students->count()));
+            foreach ($students as $student) {
+                $enrollmentDate = Carbon::parse($student->enrollment_date);
+                $now = Carbon::now();
 
-                foreach ($payingStudents as $student) {
-                    // Random account - distribute across all accounts
+                // Calculate total months from enrollment to now
+                $totalMonths = $enrollmentDate->diffInMonths($now) + 1;
+
+                // Each student pays random 40-80% of their total months (FIFO from oldest)
+                $percentagePaid = rand(40, 80);
+                $monthsPaid = (int) ceil($totalMonths * ($percentagePaid / 100));
+
+                // Generate all months from enrollment
+                $allMonths = [];
+                $current = $enrollmentDate->copy();
+                while ($current->lte($now)) {
+                    $allMonths[] = [
+                        'month' => $current->month,
+                        'year' => $current->year,
+                        'date' => $current->copy()
+                    ];
+                    $current->addMonth();
+                }
+
+                // Pay FIRST N months (FIFO - oldest first)
+                $monthsToPay = array_slice($allMonths, 0, $monthsPaid);
+
+                foreach ($monthsToPay as $monthData) {
                     $account = $accounts->random();
 
+                    // Payment date is in that month, random day
+                    $paymentDate = Carbon::create(
+                        $monthData['year'],
+                        $monthData['month'],
+                        rand(1, min(28, $monthData['date']->daysInMonth))
+                    );
+
+                    // But not in the future
+                    if ($paymentDate->isFuture()) {
+                        $paymentDate = Carbon::now()->subDays(rand(1, 30));
+                    }
+
+                    $receiptNumber = 'KWT/' . $paymentDate->format('Ymd') . '/' . str_pad($paymentCount + 1, 4, '0', STR_PAD_LEFT);
+
                     Payment::create([
-                        'receipt_number' => 'KWT/' . $paymentDate->format('Ymd') . '/' . str_pad($paymentCount + 1, 4, '0', STR_PAD_LEFT),
+                        'receipt_number' => $receiptNumber,
                         'student_id' => $student->id,
                         'fee_type_id' => $sppFeeType->id,
                         'academic_year_id' => $academicYear->id,
                         'account_id' => $account->id,
                         'amount' => $sppFeeType->amount,
-                        'payment_date' => $paymentDate->day(rand(1, 28))->format('Y-m-d'),
-                        'month' => $paymentDate->month,
-                        'year' => $paymentDate->year,
-                        'payment_method' => ['cash', 'transfer', 'transfer', 'cash'][rand(0, 3)], // 50% transfer, 50% cash
-                        'notes' => 'Pembayaran SPP ' . $paymentDate->format('F Y'),
+                        'payment_date' => $paymentDate->format('Y-m-d'),
+                        'month' => $monthData['month'],
+                        'year' => $monthData['year'],
+                        'payment_method' => ['cash', 'transfer', 'transfer', 'cash'][rand(0, 3)],
+                        'notes' => 'Pembayaran SPP ' . Carbon::create($monthData['year'], $monthData['month'])->format('F Y'),
+                        'created_by' => 1,
                     ]);
                     $paymentCount++;
                 }
+
+                $unpaidMonths = $totalMonths - $monthsPaid;
+                $this->command->info("  {$student->name}: {$monthsPaid}/{$totalMonths} bulan terbayar (tunggakan: {$unpaidMonths} bulan)");
             }
 
             // Add some other fee type payments
+            $this->command->info('Creating other fee payments...');
             $otherFees = $feeTypes->whereNotIn('name', ['SPP']);
             foreach ($otherFees as $feeType) {
                 $randomStudents = $students->random(min(rand(20, 40), $students->count()));
@@ -82,12 +124,13 @@ class PaymentSeeder extends Seeder
                         'payment_date' => $paymentDate->format('Y-m-d'),
                         'payment_method' => ['cash', 'transfer'][rand(0, 1)],
                         'notes' => 'Pembayaran ' . $feeType->name,
+                        'created_by' => 1,
                     ]);
                     $paymentCount++;
                 }
             }
         }
 
-        $this->command->info('Created ' . $paymentCount . ' payment transactions');
+        $this->command->info("✓ Created {$paymentCount} payment transactions with FIFO logic");
     }
 }

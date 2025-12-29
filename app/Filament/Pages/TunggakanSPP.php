@@ -69,10 +69,10 @@ class TunggakanSPP extends Page implements HasTable
                         $enrollmentDate = Carbon::parse($record->enrollment_date);
                         $now = Carbon::now();
                         $monthsDiff = $enrollmentDate->diffInMonths($now) + 1; // +1 to include current month
-                        
+            
                         // Max 72 months (6 years x 12 months)
                         $totalMonths = min($monthsDiff, 72);
-                        
+
                         return $totalMonths . ' bulan';
                     })
                     ->sortable(false),
@@ -85,7 +85,7 @@ class TunggakanSPP extends Page implements HasTable
                                 $query->where('name', 'LIKE', '%SPP%');
                             })
                             ->count();
-                        
+
                         return $paidCount . ' bulan';
                     })
                     ->sortable(false),
@@ -98,16 +98,16 @@ class TunggakanSPP extends Page implements HasTable
                         $now = Carbon::now();
                         $monthsDiff = $enrollmentDate->diffInMonths($now) + 1;
                         $totalMonths = min($monthsDiff, 72);
-                        
+
                         // Count paid
                         $paidCount = Payment::where('student_id', $record->id)
                             ->whereHas('feeType', function ($query) {
-                                $query->where('name', 'LIKE', '%SPP%');
-                            })
+                            $query->where('name', 'LIKE', '%SPP%');
+                        })
                             ->count();
-                        
+
                         $outstanding = $totalMonths - $paidCount;
-                        
+
                         return $outstanding . ' bulan';
                     })
                     ->color('danger')
