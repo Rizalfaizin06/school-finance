@@ -251,27 +251,28 @@ class PembayaranSPP extends Page implements HasForms
         $info = $this->studentInfo;
         $student = $info['student'];
 
-        $html = '<div class="space-y-2">';
-        $html .= '<div class="grid grid-cols-4 gap-4">';
-        $html .= '<div><strong class="text-xs">NIS:</strong> ' . $student->nis . '</div>';
-        $html .= '<div><strong class="text-xs">Kelas:</strong> ' . ($student->class->name ?? '-') . '</div>';
-        $html .= '<div><strong class="text-xs">Tanggal Masuk:</strong> ' . Carbon::parse($student->enrollment_date)->format('d M Y') . '</div>';
+        $html = '<div style="display: flex; flex-direction: column; gap: 0.75rem;">';
+        $html .= '<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">';
+        $html .= '<div><strong style="font-size: 0.75rem; color: #6b7280;">NIS:</strong> <span style="font-weight: 500;">' . $student->nis . '</span></div>';
+        $html .= '<div><strong style="font-size: 0.75rem; color: #6b7280;">Kelas:</strong> <span style="font-weight: 500;">' . ($student->class->name ?? '-') . '</span></div>';
+        $html .= '<div><strong style="font-size: 0.75rem; color: #6b7280;">Tanggal Masuk:</strong> <span style="font-weight: 500;">' . Carbon::parse($student->enrollment_date)->format('d M Y') . '</span></div>';
         $html .= '</div>';
 
-        $html .= '<div class="grid grid-cols-3 gap-4 mt-3">';
-        $html .= '<div class="p-2 bg-blue-50 dark:bg-blue-900/20 rounded"><strong class="text-xs">Harus Bayar:</strong> <span class="font-bold">' . $info['total_months_should_pay'] . ' bulan</span></div>';
-        $html .= '<div class="p-2 bg-green-50 dark:bg-green-900/20 rounded"><strong class="text-xs">Sudah Bayar:</strong> <span class="font-bold">' . $info['total_paid'] . ' bulan</span></div>';
-        $html .= '<div class="p-2 bg-red-50 dark:bg-red-900/20 rounded"><strong class="text-xs">Tunggakan:</strong> <span class="font-bold text-red-600">' . $info['total_unpaid'] . ' bulan</span></div>';
+        $html .= '<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 0.5rem;">';
+        $html .= '<div style="padding: 0.75rem; background-color: #eff6ff; border-radius: 0.5rem; border: 1px solid #bfdbfe;"><strong style="font-size: 0.75rem; color: #1e40af;">Harus Bayar:</strong> <span style="font-weight: 700; display: block; margin-top: 0.25rem; font-size: 1.125rem; color: #1e3a8a;">' . $info['total_months_should_pay'] . ' bulan</span></div>';
+        $html .= '<div style="padding: 0.75rem; background-color: #f0fdf4; border-radius: 0.5rem; border: 1px solid #bbf7d0;"><strong style="font-size: 0.75rem; color: #15803d;">Sudah Bayar:</strong> <span style="font-weight: 700; display: block; margin-top: 0.25rem; font-size: 1.125rem; color: #166534;">' . $info['total_paid'] . ' bulan</span></div>';
+        $html .= '<div style="padding: 0.75rem; background-color: #fef2f2; border-radius: 0.5rem; border: 1px solid #fecaca;"><strong style="font-size: 0.75rem; color: #b91c1c;">Tunggakan:</strong> <span style="font-weight: 700; display: block; margin-top: 0.25rem; font-size: 1.125rem; color: #dc2626;">' . $info['total_unpaid'] . ' bulan</span></div>';
         $html .= '</div>';
 
         if (count($this->unpaidMonths) > 0) {
-            $html .= '<div class="mt-3"><strong class="text-xs">Bulan yang belum dibayar (dari terlama):</strong><br>';
-            $html .= '<div class="text-xs mt-1">';
+            $html .= '<div style="margin-top: 0.5rem; padding: 0.75rem; background-color: #fef3c7; border-radius: 0.5rem; border: 1px solid #fde68a;">';
+            $html .= '<strong style="font-size: 0.75rem; color: #92400e;">Bulan yang belum dibayar (dari terlama):</strong><br>';
+            $html .= '<div style="font-size: 0.875rem; margin-top: 0.5rem; color: #451a03;">';
             $firstFive = array_slice($this->unpaidMonths, 0, 5);
             $monthNames = array_map(fn($m) => $m['month_name'], $firstFive);
             $html .= implode(', ', $monthNames);
             if (count($this->unpaidMonths) > 5) {
-                $html .= ', ... (' . (count($this->unpaidMonths) - 5) . ' bulan lagi)';
+                $html .= ', ... <strong>(' . (count($this->unpaidMonths) - 5) . ' bulan lagi)</strong>';
             }
             $html .= '</div></div>';
         }
@@ -284,39 +285,41 @@ class PembayaranSPP extends Page implements HasForms
     protected function getPaymentListHtml(): HtmlString
     {
         if (empty($this->paymentHistory)) {
-            return new HtmlString('<p class="text-sm text-gray-500">Tidak ada data pembayaran</p>');
+            return new HtmlString('<p style="font-size: 0.875rem; color: #6b7280;">Tidak ada data pembayaran</p>');
         }
 
-        $html = '<div class="overflow-x-auto">';
-        $html .= '<table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">';
-        $html .= '<thead class="bg-gray-50 dark:bg-gray-800">';
+        $html = '<div style="overflow-x: auto; border-radius: 0.5rem; border: 1px solid #e5e7eb;">';
+        $html .= '<table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">';
+        $html .= '<thead style="background-color: #f9fafb;">';
         $html .= '<tr>';
-        $html .= '<th class="px-4 py-2 text-left font-semibold">No</th>';
-        $html .= '<th class="px-4 py-2 text-left font-semibold">Bulan</th>';
-        $html .= '<th class="px-4 py-2 text-left font-semibold">Status</th>';
-        $html .= '<th class="px-4 py-2 text-left font-semibold">Tanggal Bayar</th>';
-        $html .= '<th class="px-4 py-2 text-right font-semibold">Nominal</th>';
-        $html .= '<th class="px-4 py-2 text-left font-semibold">No. Struk</th>';
+        $html .= '<th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600; border-bottom: 1px solid #e5e7eb;">No</th>';
+        $html .= '<th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600; border-bottom: 1px solid #e5e7eb;">Bulan</th>';
+        $html .= '<th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600; border-bottom: 1px solid #e5e7eb;">Status</th>';
+        $html .= '<th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600; border-bottom: 1px solid #e5e7eb;">Tanggal Bayar</th>';
+        $html .= '<th style="padding: 0.75rem 1rem; text-align: right; font-weight: 600; border-bottom: 1px solid #e5e7eb;">Nominal</th>';
+        $html .= '<th style="padding: 0.75rem 1rem; text-align: left; font-weight: 600; border-bottom: 1px solid #e5e7eb;">No. Struk</th>';
         $html .= '</tr>';
         $html .= '</thead>';
-        $html .= '<tbody class="divide-y divide-gray-200 dark:divide-gray-700">';
+        $html .= '<tbody>';
 
         foreach ($this->paymentHistory as $index => $payment) {
-            $rowClass = $payment['is_paid']
-                ? 'bg-green-50 dark:bg-green-900/10'
-                : 'bg-red-50 dark:bg-red-900/10';
+            $rowBg = $payment['is_paid']
+                ? 'background-color: #f0fdf4;'
+                : 'background-color: #fef2f2;';
 
             $statusBadge = $payment['is_paid']
-                ? '<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">Sudah Bayar</span>'
-                : '<span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">Belum Bayar</span>';
+                ? '<span style="display: inline-flex; align-items: center; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; background-color: #dcfce7; color: #166534;">✓ Sudah Bayar</span>'
+                : '<span style="display: inline-flex; align-items: center; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; background-color: #fee2e2; color: #991b1b;">✗ Belum Bayar</span>';
 
-            $html .= '<tr class="' . $rowClass . '">';
-            $html .= '<td class="px-4 py-2">' . ($index + 1) . '</td>';
-            $html .= '<td class="px-4 py-2 font-medium">' . $payment['month_year'] . '</td>';
-            $html .= '<td class="px-4 py-2">' . $statusBadge . '</td>';
-            $html .= '<td class="px-4 py-2">' . ($payment['payment_date'] ?? '-') . '</td>';
-            $html .= '<td class="px-4 py-2 text-right">' . ($payment['amount'] ? 'Rp ' . number_format($payment['amount'], 0, ',', '.') : '-') . '</td>';
-            $html .= '<td class="px-4 py-2 font-mono text-xs">' . $payment['receipt_number'] . '</td>';
+            $borderBottom = ($index < count($this->paymentHistory) - 1) ? 'border-bottom: 1px solid #e5e7eb;' : '';
+
+            $html .= '<tr style="' . $rowBg . ' ' . $borderBottom . '">';
+            $html .= '<td style="padding: 0.75rem 1rem;">' . ($index + 1) . '</td>';
+            $html .= '<td style="padding: 0.75rem 1rem; font-weight: 500;">' . $payment['month_year'] . '</td>';
+            $html .= '<td style="padding: 0.75rem 1rem;">' . $statusBadge . '</td>';
+            $html .= '<td style="padding: 0.75rem 1rem;">' . ($payment['payment_date'] ?? '-') . '</td>';
+            $html .= '<td style="padding: 0.75rem 1rem; text-align: right; font-weight: 500;">' . ($payment['amount'] ? 'Rp ' . number_format($payment['amount'], 0, ',', '.') : '-') . '</td>';
+            $html .= '<td style="padding: 0.75rem 1rem; font-family: monospace; font-size: 0.75rem; color: #6b7280;">' . $payment['receipt_number'] . '</td>';
             $html .= '</tr>';
         }
 
